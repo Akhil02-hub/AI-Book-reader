@@ -12,7 +12,7 @@ const { rateLimit } = require('express-rate-limit');
 const scrypt = promisify(crypto.scrypt);
 const app = express();
 const root = process.env.APP_ROOT || __dirname;
-const dataDirectory = path.join(root, 'data');
+const dataDirectory = '/tmp/data';
 fs.mkdirSync(dataDirectory, { recursive: true });
 
 const production = process.env.NODE_ENV === 'production';
