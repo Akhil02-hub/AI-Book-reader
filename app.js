@@ -998,15 +998,10 @@ async function initialize() {
   } catch {
     showGuestMode();
     renderEmpty();
+  } finally {
+    // Hide the loading splash screen when initialization finishes
+    const splash = document.getElementById('appSplash');
+    if (splash) splash.classList.add('hidden');
   }
 }
-
-window.__marginHandle401 = function () {
-  if (document.body.classList.contains('auth-ready') && authScreen.classList.contains('open')) return;
-  cancelNarration();
-  currentBook = null;
-  renderEmpty();
-  setAuthMode('login');
-  showAuth('Your session expired. Please sign in again.');
-};
 initialize();
