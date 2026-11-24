@@ -186,7 +186,6 @@ function showGuestMode() {
 
 function requireAuth(action) {
   if (document.body.classList.contains('signed-in')) {
-    action?.();
     return true;
   }
   pendingAuthAction = action || null;
