@@ -34,15 +34,15 @@ body {
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --paper: #1b1d1b;
-        --white: #232623;
-        --ink: #e8e6df;
-        --muted: #b8b6ac;
-        --line: #34372f;
-        --green: #6ba585;
-        --green-dark: #558e6f;
-        --sage: #262b24;
-        --cream: #23241f
+        --paper: #000000;
+        --white: #121212;
+        --ink: #ededed;
+        --muted: #888888;
+        --line: #2a2a2a;
+        --green: #81c784;
+        --green-dark: #66bb6a;
+        --sage: #1a1a1a;
+        --cream: #181818
     }
 
     body {
@@ -51,28 +51,74 @@ body {
     }
 
     .sidebar {
-        background: #171a17;
-        border-right-color: #2a2d28
+        background: #050505;
+        border-right-color: #1a1a1a
     }
 
     .topbar {
-        background: rgba(27, 29, 27, .92)
+        background: rgba(0, 0, 0, .92);
+        border-bottom-color: #1a1a1a
     }
 
     .reader-document {
-        background: #1b1d1b
+        background: #000000
     }
 
     .reader-paragraph {
-        color: #d8d5cd
+        color: #cccccc
     }
 
     .search-box,
     .reader-book,
     .modal,
     .auth-card {
-        background: #232623;
-        border-color: #2f332c
+        background: #121212;
+        border-color: #2a2a2a
+    }
+
+    /* Fix hardcoded light backgrounds */
+    .auth-screen {
+        background: radial-gradient(ellipse at 78% 18%, #14261a 0, transparent 34%), radial-gradient(ellipse at 12% 86%, #2a2015 0, transparent 38%), #000000
+    }
+
+    .empty-upload {
+        background: linear-gradient(135deg, #121212 0%, #1a1a1a 100%);
+        border-color: #333333
+    }
+
+    .empty-upload strong {
+        color: #ffffff
+    }
+
+    .empty-upload-icon {
+        background: #1e2e22;
+        color: #81c784
+    }
+
+    .upload-zone {
+        background: #121212;
+        border-color: #333333
+    }
+
+    .upload-label {
+        background: #1a1a1a;
+        border-color: #333333;
+        color: #cccccc
+    }
+
+    .voice-settings select,
+    .reader-action,
+    .speech-button,
+    .chat-form,
+    .chat-suggestions button {
+        background: #121212;
+        border-color: #333333;
+        color: #cccccc
+    }
+
+    .book-chapter h2 {
+        border-bottom-color: #2a2a2a;
+        color: #ededed
     }
 }
 
@@ -110,7 +156,7 @@ button {
     gap: 9px;
     margin: 0 0 30px 9px;
     text-decoration: none;
-    color: #222620;
+    color: var(--ink);
     font-weight: 700;
     font-size: 21px;
     letter-spacing: -1.1px
@@ -2307,11 +2353,11 @@ body:not(.auth-ready) .auth-screen {
 #authForm input {
     width: 100%;
     height: 39px;
-    border: 1px solid #e3e2db;
+    border: 1px solid var(--line);
     border-radius: 6px;
     padding: 0 11px;
-    background: #fdfdfb;
-    color: #30352f;
+    background: var(--paper);
+    color: var(--ink);
     font-size: 12px;
     outline: 0
 }
