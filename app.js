@@ -15,6 +15,8 @@ let searchTimer;
 let authMode = 'login';
 let pendingAuthAction = null;
 let progress = { segmentIndex: 0, wordOffset: 0, scrollPercent: 0 };
+let highlights = [];
+let highlightButton = null;
 
 const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const sentenceSegmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'sentence' }) : null;
@@ -46,8 +48,12 @@ function restoreProgressSnapshot() {
   apiProgress();
 }
 
+let isRecordingStarting = false;
 async function downloadFullAudio() {
-  if (audioRecorder && audioRecorder.state !== 'inactive') return toast('A recording is already in progress.');
+  if (isRecordingStarting || (audioRecorder && audioRecorder.state !== 'inactive')) {
+    return toast('A recording is already in progress.');
+  }
+  isRecordingStarting = true;
   if (!currentBook || !readingSegments.length) return toast('Upload a book first.');
   if (!('speechSynthesis' in window)) return toast('Read aloud is not supported in this browser.');
   if (!window.isSecureContext) return toast('Audio capture requires HTTPS or localhost.');
@@ -100,12 +106,14 @@ async function downloadFullAudio() {
     const statusEl = document.querySelector('#speechStatus');
     if (statusEl) statusEl.textContent = 'Recording full book…';
     toast('Recording… narration saves automatically at the end.');
+    isRecordingStarting = false;
   } catch (error) {
     if (error.name !== 'NotAllowedError' && error.name !== 'AbortError') toast(`Audio capture failed: ${error.message}`);
     cancelNarration();
     stopAudioTracks();
     audioRecorder = null;
     audioChunks = [];
+    isRecordingStarting = false;
     restoreProgressSnapshot();
     updateSpeechControls();
   }
@@ -143,7 +151,14 @@ async function api(url, options = {}) {
   });
   if (response.status === 204) return null;
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || 'The request could not be completed.');
+  if (!response.ok) {
+    const error = new Error(result.error || 'The request could not be completed.');
+    error.status = response.status;
+    if (response.status === 401 && typeof window !== 'undefined' && window.__marginHandle401) {
+      window.__marginHandle401();
+    }
+    throw error;
+  }
   return result;
 }
 
@@ -152,6 +167,10 @@ function showAuth(message = '') {
   document.body.classList.add('auth-ready');
   document.body.classList.add('app-ready');
   authScreen.classList.add('open');
+  authScreen.setAttribute('aria-hidden', 'false');
+  document.querySelector('.app-shell').setAttribute('inert', '');
+  const closeBtn = document.querySelector('#authClose');
+  if (closeBtn) closeBtn.hidden = !pendingAuthAction;
   document.querySelector('#authError').textContent = message;
   document.querySelector('#usernameInput').focus();
 }
@@ -162,6 +181,8 @@ function showApplication(username) {
   document.body.classList.add('auth-ready');
   document.body.classList.add('app-ready');
   authScreen.classList.remove('open');
+  authScreen.setAttribute('aria-hidden', 'true');
+  document.querySelector('.app-shell').removeAttribute('inert');
   document.querySelector('#currentUsername').textContent = username;
   document.querySelector('.workspace-copy strong').textContent = `${username}'s library`;
   const workspaceInitial = document.querySelector('.workspace-avatar .workspace-initial');
@@ -175,6 +196,8 @@ function showGuestMode() {
   document.body.classList.remove('signed-in');
   document.body.classList.add('app-ready');
   authScreen.classList.remove('open');
+  authScreen.setAttribute('aria-hidden', 'true');
+  document.querySelector('.app-shell').removeAttribute('inert');
   document.querySelector('#currentUsername').textContent = 'Guest';
   document.querySelector('.workspace-copy strong').textContent = 'Local library';
   const workspaceInitial = document.querySelector('.workspace-avatar .workspace-initial');
@@ -213,6 +236,7 @@ function showModal(content, className = '') {
   modalBackdrop.classList.add('open');
   modalBackdrop.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
+  document.querySelector('.app-shell').setAttribute('inert', '');
   document.querySelector('#closeModal').focus();
 }
 
@@ -220,6 +244,9 @@ function closeModal() {
   modalBackdrop.classList.remove('open');
   modalBackdrop.setAttribute('aria-hidden', 'true');
   document.body.style.overflow = '';
+  if (!authScreen.classList.contains('open')) {
+    document.querySelector('.app-shell').removeAttribute('inert');
+  }
 }
 
 function toast(message) {
@@ -238,9 +265,174 @@ function apiProgress(keepalive = false) {
   return api('/api/progress', { method: 'PUT', body: payload }).catch(() => { });
 }
 
+let progressLastSaved = 0;
+const PROGRESS_MIN_INTERVAL = 2000;
 function scheduleProgressSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => apiProgress(), 450);
+  const since = Date.now() - progressLastSaved;
+  if (since >= PROGRESS_MIN_INTERVAL) {
+    progressLastSaved = Date.now();
+    apiProgress();
+    return;
+  }
+  saveTimer = setTimeout(() => {
+    progressLastSaved = Date.now();
+    apiProgress();
+  }, PROGRESS_MIN_INTERVAL - since);
+}
+
+function currentUserScope() {
+  const raw = document.querySelector('#currentUsername')?.textContent || 'guest';
+  return raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'guest';
+}
+function highlightsKey() {
+  if (!currentBook) return 'margin-highlights::draft';
+  return `margin-highlights::${currentUserScope()}::${currentBook.title}`;
+}
+
+function loadHighlights() {
+  highlights = [];
+  if (!currentBook) return;
+  try {
+    const raw = localStorage.getItem(highlightsKey());
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) highlights = parsed;
+      else { console.warn('[margin] highlights not an array — resetting'); highlights = []; }
+    }
+  } catch (error) {
+    console.warn('[margin] failed to parse highlights; resetting', error);
+    try { localStorage.removeItem(highlightsKey()); } catch { /* storage disabled */ }
+    highlights = [];
+  }
+}
+
+function saveHighlights() {
+  if (!currentBook) return;
+  try { localStorage.setItem(highlightsKey(), JSON.stringify(highlights)); } catch { /* storage disabled */ }
+}
+
+function applyHighlights() {
+  document.querySelectorAll('.reader-word.highlighted').forEach(node => node.classList.remove('highlighted'));
+  if (!highlights.length) return;
+  for (const h of highlights) {
+    const sentences = document.querySelectorAll(`.reader-sentence[data-segment-index="${h.segmentIndex}"]`);
+    if (!sentences.length) continue;
+    for (const sentence of sentences) {
+      const start = Math.min(h.wordStart, h.wordEnd);
+      const end = Math.max(h.wordStart, h.wordEnd);
+      for (let i = start; i <= end; i++) {
+        const word = sentence.querySelector(`.reader-word[data-word-index="${i}"]`);
+        if (word) word.classList.add('highlighted');
+      }
+    }
+  }
+}
+
+function captureSelectionHighlight() {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+  const reader = document.querySelector('#readerDocument');
+  if (!reader) return null;
+  const range = selection.getRangeAt(0);
+  if (!reader.contains(range.commonAncestorContainer)) return null;
+  const groups = new Map();
+  for (const word of reader.querySelectorAll('.reader-word')) {
+    if (!range.intersectsNode(word)) continue;
+    const sentence = word.closest('.reader-sentence');
+    if (!sentence) continue;
+    const segmentIndex = Number(sentence.dataset.segmentIndex);
+    const wordIndex = Number(word.dataset.wordIndex);
+    if (!Number.isFinite(segmentIndex) || !Number.isFinite(wordIndex)) continue;
+    const bucket = groups.get(segmentIndex) || [];
+    bucket.push(wordIndex);
+    groups.set(segmentIndex, bucket);
+  }
+  if (!groups.size) return null;
+  const result = [];
+  for (const [segmentIndex, indices] of groups) {
+    indices.sort((a, b) => a - b);
+    result.push({ segmentIndex, wordStart: indices[0], wordEnd: indices[indices.length - 1] });
+  }
+  return result;
+}
+
+function ensureHighlightButton() {
+  if (highlightButton) return highlightButton;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'highlight-popover';
+  btn.textContent = 'Highlight';
+  btn.hidden = true;
+  btn.addEventListener('mousedown', event => event.preventDefault());
+  btn.addEventListener('click', () => {
+    const groups = captureSelectionHighlight();
+    hideHighlightButton();
+    if (!groups) return;
+    highlights.push(...groups);
+    applyHighlights();
+    saveHighlights();
+    window.getSelection()?.removeAllRanges();
+    toast('Highlight saved. Use Download PDF to keep it.');
+  });
+  document.body.appendChild(btn);
+  highlightButton = btn;
+  return btn;
+}
+
+function showHighlightButton(x, y) {
+  const btn = ensureHighlightButton();
+  btn.style.left = `${x}px`;
+  btn.style.top = `${y}px`;
+  btn.hidden = false;
+}
+
+function hideHighlightButton() {
+  if (highlightButton) highlightButton.hidden = true;
+}
+
+function pickBehavior() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+}
+
+function setStartFromSentence(node) {
+  if (!node) return;
+  const idx = Number(node.dataset.segmentIndex);
+  if (!Number.isFinite(idx)) return;
+  cancelNarration();
+  progress = { ...progress, segmentIndex: idx, wordOffset: 0 };
+  highlightPosition();
+  scheduleProgressSave();
+  node.scrollIntoView({ behavior: pickBehavior(), block: 'center' });
+  toast('Reading will start from here.');
+}
+
+function setStartFromViewport() {
+  const reader = document.querySelector('#readerDocument');
+  if (!reader) return;
+  const viewport = reader.getBoundingClientRect();
+  const midY = viewport.top + viewport.height / 2;
+  let closest = null;
+  let closestDist = Infinity;
+  for (const node of reader.querySelectorAll('.reader-sentence')) {
+    const rect = node.getBoundingClientRect();
+    if (rect.bottom < viewport.top || rect.top > viewport.bottom) continue;
+    const dist = Math.abs((rect.top + rect.bottom) / 2 - midY);
+    if (dist < closestDist) { closestDist = dist; closest = node; }
+  }
+  if (!closest) { toast('Scroll to a sentence first.'); return; }
+  setStartFromSentence(closest);
+}
+
+function downloadReaderPdf() {
+  if (!currentBook) return;
+  document.body.classList.add('printing-reader');
+  const cleanup = () => {
+    document.body.classList.remove('printing-reader');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(() => window.print(), 60);
 }
 
 function sentenceTokens(text) {
@@ -248,7 +440,7 @@ function sentenceTokens(text) {
   return text.match(/[^.!?]+(?:[.!?]+["'”’)]*|$)\s*/g) || [text];
 }
 
-function renderSentenceWords(text, segmentIndex) {
+function renderSentenceWords(text) {
   let markup = '';
   const tokens = wordSegmenter ? [...wordSegmenter.segment(text)] : [...text.matchAll(/\S+|\s+/g)].map(match => ({ segment: match[0], index: match.index, isWordLike: /^\S/.test(match[0]) }));
   const wordRanges = [];
@@ -299,7 +491,7 @@ function renderBook(book) {
         const text = rawSentence.trim();
         if (!text) { sentenceMarkup += escapeHTML(rawSentence); continue; }
         const segmentIndex = readingSegments.length;
-        const wordData = renderSentenceWords(text, segmentIndex);
+        const wordData = renderSentenceWords(text);
         readingSegments.push({ text, chapterIndex, paragraphIndex, wordRanges: wordData.wordRanges });
         sentenceMarkup += `${escapeHTML(leading)}<span class="reader-sentence" data-segment-index="${segmentIndex}">${wordData.markup}</span>${escapeHTML(trailing)}`;
       }
@@ -308,19 +500,27 @@ function renderBook(book) {
     return `<section class="book-chapter">${chapter.title ? `<h2>${escapeHTML(chapter.title)}</h2>` : ''}${paragraphMarkup}</section>`;
   }).join('');
 
-  bookArea.innerHTML = `<article class="reader-book"><header class="reader-book-header"><div class="reader-book-heading"><span class="modal-kicker">YOUR BOOK · ${escapeHTML(book.format.toUpperCase())}</span><h2>${escapeHTML(book.title)}</h2><p>${escapeHTML(book.author || 'Uploaded book')}</p></div><div class="reader-book-actions"><button class="reader-action" id="removeBook">Remove book</button><button class="reader-action reader-action-primary" id="replaceBook">Replace book</button></div></header><div class="reading-toolbar"><div class="speech-controls"><button class="speech-button speech-start" id="speechStart"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg> <span>Start reading</span></button><button class="speech-button" id="speechPause" disabled><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg> <span>Pause</span></button><button class="speech-button speech-stop" id="speechStop" disabled><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg> <span>Stop</span></button><button class="speech-button speech-download" id="downloadAudioBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg> <span>Download full audio</span></button></div><div class="voice-settings"><label for="voiceSelect">Voice</label><select id="voiceSelect"><option value="">System default</option></select><label for="rateSelect">Speed</label><select id="rateSelect"><option value="0.8">0.8×</option><option value="1" selected>1×</option><option value="1.2">1.2×</option><option value="1.5">1.5×</option></select></div><span class="speech-status" id="speechStatus" aria-live="polite">Ready when you are</span></div><div class="reader-progress"><span>Reading progress</span><div class="reader-progress-track"><i id="progressBar"></i></div><span id="progressPercent">0%</span></div><div class="reader-document" id="readerDocument"><article class="reader-copy">${chapterMarkup}</article><div class="book-end">You’ve reached the end of <em>${escapeHTML(book.title)}</em>.</div></div></article>`;
+  bookArea.innerHTML = `<article class="reader-book"><header class="reader-book-header"><div class="reader-book-heading"><span class="modal-kicker">YOUR BOOK · ${escapeHTML((book.format || 'txt').toUpperCase())}</span><h2>${escapeHTML(book.title)}</h2><p>${escapeHTML(book.author || 'Uploaded book')}</p></div><div class="reader-book-actions"><button class="reader-action" id="downloadPdfBtn" title="Saves a PDF with your highlights baked in — choose 'Save as PDF' in the print dialog">Download PDF</button><button class="reader-action" id="removeBook">Remove book</button><button class="reader-action reader-action-primary" id="replaceBook">Replace book</button></div></header><div class="reading-toolbar"><div class="speech-controls"><button class="speech-button speech-start" id="speechStart"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg> <span>Start reading</span></button><button class="speech-button" id="speechPause" disabled><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg> <span>Pause</span></button><button class="speech-button speech-stop" id="speechStop" disabled><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg> <span>Stop</span></button><button class="speech-button speech-download" id="downloadAudioBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg> <span>Download full audio</span></button></div><div class="voice-settings"><label for="voiceSelect">Voice</label><select id="voiceSelect"><option value="">System default</option></select><label for="rateSelect">Speed</label><select id="rateSelect"><option value="0.8">0.8×</option><option value="1" selected>1×</option><option value="1.2">1.2×</option><option value="1.5">1.5×</option></select></div><span class="speech-status" id="speechStatus" aria-live="polite">Ready when you are</span></div><div class="reader-progress"><span>Reading progress</span><div class="reader-progress-track"><i id="progressBar"></i></div><span id="progressPercent">0%</span></div><div class="reader-document" id="readerDocument"><article class="reader-copy">${chapterMarkup}</article><div class="book-end">You’ve reached the end of <em>${escapeHTML(book.title)}</em>.</div></div></article>`;
 
   document.querySelector('#replaceBook').addEventListener('click', openUpload);
   document.querySelector('#removeBook').addEventListener('click', async () => {
     if (!confirm('Remove this book from your account?')) return;
     cancelNarration();
-    try { await api('/api/books', { method: 'DELETE' }); renderEmpty(); toast('Book removed'); }
+    try {
+      await api('/api/books', { method: 'DELETE' });
+      try { localStorage.removeItem(highlightsKey()); } catch { /* storage disabled */ }
+      highlights = [];
+      renderEmpty();
+      toast('Book removed');
+    }
     catch (error) { toast(error.message); }
   });
   document.querySelector('#speechStart').addEventListener('click', startNarration);
   document.querySelector('#speechPause').addEventListener('click', toggleNarrationPause);
   document.querySelector('#speechStop').addEventListener('click', stopNarration);
   document.querySelector('#downloadAudioBtn').addEventListener('click', downloadFullAudio);
+  document.querySelector('#downloadPdfBtn').addEventListener('click', downloadReaderPdf);
+  document.querySelector('#setStartBtn').addEventListener('click', setStartFromViewport);
   configureVoices();
   const reader = document.querySelector('#readerDocument');
   const savedRatio = Math.max(0, Math.min(100, Number(progress.scrollPercent) || 0));
@@ -383,11 +583,13 @@ function updateReadProgress() {
 }
 
 function configureVoices() {
-  const select = document.querySelector('#voiceSelect');
-  if (!select || !('speechSynthesis' in window)) return;
-  const refresh = () => {
+  let voicesBound = false;
+  function populateVoiceOptions(select) {
     speechVoices = speechSynthesis.getVoices();
-    if (!speechVoices.length) return;
+    if (!speechVoices.length) {
+      // Chrome returns [] until voiceschanged fires; the listener at configureVoices() will retry.
+      return;
+    }
     const oldValue = select.value || localStorage.getItem('margin-voice') || '';
     select.innerHTML = '<option value="">System default</option>';
     speechVoices.forEach((voice) => {
@@ -398,8 +600,20 @@ function configureVoices() {
     });
     if ([...select.options].some(option => option.value === oldValue)) select.value = oldValue;
   };
-  refresh();
-  speechSynthesis.addEventListener('voiceschanged', refresh);
+  populateVoiceOptions(document.querySelector('#voiceSelect'));
+  if (!voicesBound) {
+    voicesBound = true;
+    speechSynthesis.addEventListener('voiceschanged', () => {
+      const current = document.querySelector('#voiceSelect');
+      if (current) populateVoiceOptions(current);
+    });
+  }
+  const rateSelect = document.querySelector('#rateSelect');
+  const savedRate = localStorage.getItem('margin-rate');
+  if (rateSelect) {
+    if (savedRate) rateSelect.value = savedRate;
+    rateSelect.onchange = () => localStorage.setItem('margin-rate', rateSelect.value);
+  }
   select.onchange = () => localStorage.setItem('margin-voice', select.value);
 }
 
@@ -547,7 +761,7 @@ function openUpload() {
   if (!requireAuth(openUpload)) return;
   if (currentBook && !confirm('This replaces your current book. Continue?')) return;
   cancelNarration();
-  showModal(`<span class="modal-kicker">YOUR PRIVATE LIBRARY</span><h2 id="modalTitle">Choose a book to read.</h2><p>Margin keeps one book in your account and lays the whole text out as one continuous reader.</p><label class="upload-zone" id="uploadZone" for="bookFile"><span class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v14"/><path d="m6 9 6-6 6 6"/><path d="M4 21h16"/></svg></span><strong>Drop a book here or choose a file</strong><span class="upload-support">EPUB, PDF, TXT, or Markdown · up to 14 MB</span><span class="upload-label">Choose file</span><input type="file" id="bookFile" accept=".epub,.pdf,.txt,.md,application/pdf,application/epub+zip,text/plain,text/markdown" /></label><p class="upload-note">Uploading a different book replaces your current book.</p><div id="uploadMessage" class="upload-message" aria-live="polite"></div>`, 'upload-dialog');
+  showModal(`<span class="modal-kicker">YOUR PRIVATE LIBRARY</span><h2 id="modalTitle">Choose a book to read.</h2><p>AI Reading keeps one book in your account and lays the whole text out as one continuous reader.</p><label class="upload-zone" id="uploadZone" for="bookFile"><span class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v14"/><path d="m6 9 6-6 6 6"/><path d="M4 21h16"/></svg></span><strong>Drop a book here or choose a file</strong><span class="upload-support">EPUB, PDF, TXT, or Markdown · up to 14 MB</span><span class="upload-label">Choose file</span><input type="file" id="bookFile" accept=".epub,.pdf,.txt,.md,application/pdf,application/epub+zip,text/plain,text/markdown" /></label><p class="upload-note">Uploading a different book replaces your current book.</p><div id="uploadMessage" class="upload-message" aria-live="polite"></div>`, 'upload-dialog');
   const zone = document.querySelector('#uploadZone');
   const input = document.querySelector('#bookFile');
   input.addEventListener('change', () => { if (input.files[0]) importBook(input.files[0]); });
@@ -705,7 +919,7 @@ document.querySelector('#logoutButton').addEventListener('click', async () => {
 });
 
 document.querySelector('#addBookButton').addEventListener('click', openUpload);
-document.querySelector('#upgradeButton').addEventListener('click', () => toast('Margin Plus is coming soon.'));
+document.querySelector('#upgradeButton').addEventListener('click', () => toast('AI Reading Plus is coming soon.'));
 document.querySelector('.workspace-switch').addEventListener('click', () => toast('Workspace switching is coming soon.'));
 document.querySelector('#closeModal').addEventListener('click', closeModal);
 modalBackdrop.addEventListener('keydown', event => {
@@ -753,6 +967,13 @@ document.addEventListener('visibilitychange', () => {
 });
 document.querySelector('#authScreen').addEventListener('keydown', event => { if (event.key === 'Escape') event.stopPropagation(); });
 
+document.addEventListener('click', event => {
+  if (highlightButton && !highlightButton.hidden && !highlightButton.contains(event.target)) {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) hideHighlightButton();
+  }
+});
+
 async function loadUserBook() {
   try {
     const result = await api('/api/books');
@@ -780,4 +1001,12 @@ async function initialize() {
   }
 }
 
+window.__marginHandle401 = function () {
+  if (document.body.classList.contains('auth-ready') && authScreen.classList.contains('open')) return;
+  cancelNarration();
+  currentBook = null;
+  renderEmpty();
+  setAuthMode('login');
+  showAuth('Your session expired. Please sign in again.');
+};
 initialize();

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EPUB Reader — AI Book Reading</title>
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+        body {
+            background: var(--paper);
+            color: var(--ink);
+            font-family: var(--sans);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .page-wrap {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 60px 24px;
+            flex: 1;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .nav-header {
+            margin-bottom: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .nav-header a.brand {
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            color: var(--ink);
+            font-weight: 700;
+            font-size: 21px;
+            letter-spacing: -1.1px;
+        }
+
+        .nav-header img {
+            width: 27px;
+            height: 27px;
+        }
+
+        .nav-header .back-btn {
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--white);
+            background: var(--green);
+            padding: 8px 14px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .nav-header .back-btn:hover {
+            background: var(--green-dark);
+        }
+
+        h1 {
+            font: 500 34px/1.2 var(--serif);
+            margin-bottom: 16px;
+            letter-spacing: -0.5px;
+        }
+
+        h2 {
+            font: 500 22px/1.4 var(--serif);
+            margin-top: 32px;
+            margin-bottom: 12px;
+            color: var(--ink);
+        }
+
+        p {
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--muted);
+            margin-bottom: 16px;
+        }
+
+        .page-footer {
+            text-align: center;
+            padding: 24px;
+            font-size: 12px;
+            color: var(--muted);
+            border-top: 1px solid var(--line);
+            margin-top: auto;
+        }
+
+        .page-footer a {
+            color: var(--muted);
+            margin: 0 8px;
+            text-decoration: none;
+        }
+
+        .page-footer a:hover {
+            color: var(--green);
+        }
+
+        .eyebrow {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1.15px;
+            color: #6f756a;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .brand-dot {
+            color: #73917b;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page-wrap">
+        <header class="nav-header">
+            <a href="/" class="brand"><img src="/logo.png" alt="Logo" /><span>AI Reading<span
+                        class="brand-dot">.</span></span></a>
+            <a href="/" class="back-btn">Open Reader →</a>
+        </header>
+        <main>
+            <span class="eyebrow">Features</span>
+            <h1>EPUB Reader.</h1>
+            <p>Read your favorite EPUB books in a continuous, seamless scroll. We extract the raw text and chapters from
+                the EPUB file and rebuild it into a clean, distraction-free reading view.</p>
+
+            <h2>No pagination. Just reading.</h2>
+            <p>Traditional e-readers force you to flip pages, which can break your focus. Our reader lays the entire
+                book out in one continuous vertical scroll, allowing you to read naturally and stay immersed in the
+                text.</p>
+
+            <h2>Chapter support</h2>
+            <p>We parse the EPUB index to preserve chapter breaks and titles, giving you clear visual markers as you
+                progress through the book.</p>
+
+            <h2>Read aloud built-in</h2>
+            <p>Every EPUB uploaded can be narrated using your browser's native text-to-speech engine. You can even
+                highlight sentences as they are spoken.</p>
+        </main>
+    </div>
+    <footer class="page-footer">
+        <a href="/about">About</a> · <a href="/contact">Contact</a> · <a href="/faq">FAQ</a> · <a
+            href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+        <p style="margin-top: 12px; font-size: 12px;">Made by Amarachintha Akhil.</p>
+    </footer>
+</body>
+
+</html>

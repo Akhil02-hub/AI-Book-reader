@@ -4,19 +4,95 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#f8f7f4" />
+  <link rel="canonical" href="https://freeaibookreader.vercel.app/" />
+  <meta name="google-site-verification" content="Aj4jguP6VEZ94BsMCynn5EB7nNt-JFFVdkzViuLCl5I" />
+  <meta name="theme-color" content="#f8f7f4" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1c1f1c" media="(prefers-color-scheme: dark)" />
   <meta name="description" content="A calmer way to read, understand, and remember your books with AI." />
-  <title>Margin — your thoughtful reading companion</title>
+  <link rel="preconnect" href="/fonts">
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/dm-sans.woff2" crossorigin>
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/playfair-display.woff2" crossorigin>
+  <title>AI Book Reading — your thoughtful reading companion</title>
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="AI Reading Assistant" />
+  <meta property="og:description" content="Upload documents, paste text and listen at your preferred reading speed." />
+  <meta property="og:url" content="https://freeaibookreader.vercel.app/" />
+  <meta property="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="AI Reading Assistant" />
+  <meta name="twitter:description" content="Your personal document and text reading assistant." />
+  <meta name="twitter:image" content="https://freeaibookreader.vercel.app/logo.png" />
   <link rel="icon" type="image/png" href="/logo.png" />
-  <link rel="icon" type="image/png" href="/logo.png" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    // If app.js never loads, drop the no-js class so styles reveal the shell.
+    window.addEventListener('DOMContentLoaded', function () {
+      document.body.classList.remove('no-js');
+      setTimeout(function () {
+        if (!document.body.classList.contains('app-ready') && !document.body.classList.contains('auth-ready')) {
+          document.body.classList.add('app-ready');
+          document.body.classList.add('auth-ready');
+          var a = document.getElementById('authScreen');
+          if (a) { a.classList.add('open'); a.setAttribute('aria-hidden', 'false'); }
+        }
+      }, 4000);
+    });
+  </script>
   <link rel="stylesheet" href="/styles.css" />
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "AI Reading Assistant",
+  "description": "A browser-based reading assistant for listening to supported PDF and EPUB documents and pasted text with adjustable reading speed.",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Web",
+  "creator": {
+    "@type": "Person",
+    "name": "Amarachintha Akhil"
+  },
+  "featureList": [
+    "PDF document reading",
+    "EPUB document reading",
+    "Paste text and listen",
+    "Adjustable reading speed",
+    "Browser-based reading experience"
+  ],
+  "url": "https://freeaibookreader.vercel.app/"
+}
+</script>
+
 </head>
 
-<body>
-  <div class="auth-screen open" id="authScreen" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+<body class="no-js">
+  <noscript>
+    <style>
+      .app-shell {
+        display: block !important;
+      }
+
+      .auth-screen {
+        display: none !important;
+      }
+    </style>
+    <p style="padding:20px;text-align:center;font-family:sans-serif">Free AI Book Reading needs JavaScript to render
+      your book. Please
+      enable it and reload.</p>
+  </noscript>
+  <a class="skip-link" href="#mainContent">Skip to content</a>
+  <div class="app-splash" id="appSplash" aria-hidden="true">
+    <div class="app-splash-dot"></div>
+  </div>
+  <div class="auth-screen open" id="authScreen" role="dialog" aria-modal="true" aria-labelledby="authTitle"
+    aria-hidden="false">
     <div class="auth-card">
-      <a class="brand auth-brand" href="#"><span class="brand-mark"><img src="/logo.png"
-            alt="" /></span><span>margin<span class="brand-dot">.</span></span></a>
+      <button class="auth-close" id="authClose" type="button" aria-label="Continue as guest" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          aria-hidden="true">
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      </button>
+      <a class="brand auth-brand" href="#"><span class="brand-mark"><img src="/logo.png" alt="" /></span><span>AI
+          Reading<span class="brand-dot">.</span></span></a>
 
       <p class="eyebrow">A PRIVATE SPACE FOR YOUR BOOKS</p>
       <h1 id="authTitle">Welcome back.</h1>
@@ -37,8 +113,8 @@
   </div>
   <div class="app-shell">
     <aside class="sidebar" id="sidebar">
-      <a class="brand" href="#home" aria-label="Margin home"><span class="brand-mark"><img src="/logo.png"
-            alt="" /></span><span>margin<span class="brand-dot">.</span></span></a>
+      <a class="brand" href="#home" aria-label="AI Reading home"><span class="brand-mark"><img src="/logo.png"
+            alt="" /></span><span>AI Reading<span class="brand-dot">.</span></span></a>
       <button class="workspace-switch" type="button"><span class="workspace-avatar"><svg viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M4 4h12a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2V4z" />
@@ -109,9 +185,13 @@
           </svg></button>
         <div class="breadcrumbs"><span>My space</span><span class="crumb-slash">/</span><strong
             id="pageCrumb">Home</strong></div>
-        <div class="topbar-actions"><label class="search-box"><span>⌕</span><input id="searchInput" type="search"
-              aria-label="Find in your book" placeholder="Find in your book..." /><kbd>⌘ K</kbd></label><button
-            class="help-button" id="helpButton" aria-label="Help"><span aria-hidden="true">?</span> Help</button></div>
+        <div class="topbar-actions"><label class="search-box"><svg class="search-icon" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg><input id="searchInput" type="search" aria-label="Find in your book"
+              placeholder="Find in your book..." /><kbd id="searchKbd">Ctrl K</kbd></label><button class="help-button"
+            id="helpButton" aria-label="Help"><span aria-hidden="true">?</span> Help</button></div>
       </header>
 
       <div class="page-wrap" id="pageWrap">
@@ -134,8 +214,13 @@
           </div>
           <div id="bookArea"></div>
         </section>
-        <footer><span>Your place is saved on this device.</span><span>Read in one continuous scroll ·
-            <b>margin.</b></span></footer>
+        <footer><span>Your place and highlights are saved to your account.</span><span>
+            <a href="/about" style="color: inherit; text-decoration: none; margin-right: 8px;">About</a>
+            <a href="/contact" style="color: inherit; text-decoration: none; margin-right: 8px;">Contact</a>
+            <a href="/faq" style="color: inherit; text-decoration: none; margin-right: 8px;">FAQ</a>
+            <a href="/privacy" style="color: inherit; text-decoration: none; margin-right: 8px;">Privacy</a>
+            <a href="/terms" style="color: inherit; text-decoration: none;">Terms</a>
+            · <b>Free AI Book Reading.</b></span></footer>
       </div>
     </main>
   </div>

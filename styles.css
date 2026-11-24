@@ -1,4 +1,18 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+@font-face {
+    font-family: 'DM Sans';
+    font-style: normal;
+    font-weight: 100 1000;
+    font-display: swap;
+    src: url('/fonts/dm-sans.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Playfair Display';
+    font-style: normal;
+    font-weight: 400 900;
+    font-display: swap;
+    src: url('/fonts/playfair-display.woff2') format('woff2');
+}
 
 :root {
     --paper: #f8f7f4;
@@ -29,8 +43,53 @@ body {
     background: var(--paper);
     color: var(--ink);
     font-family: var(--sans);
-    font-size: 14px;
+    font-size: 15px;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --paper: #1b1d1b;
+        --white: #232623;
+        --ink: #e8e6df;
+        --muted: #b8b6ac;
+        --line: #34372f;
+        --green: #6ba585;
+        --green-dark: #558e6f;
+        --sage: #262b24;
+        --cream: #23241f
+    }
+
+    body {
+        background: var(--paper);
+        color: var(--ink)
+    }
+
+    .sidebar {
+        background: #171a17;
+        border-right-color: #2a2d28
+    }
+
+    .topbar {
+        background: rgba(27, 29, 27, .92)
+    }
+
+    .reader-document {
+        background: #1b1d1b
+    }
+
+    .reader-paragraph {
+        color: #d8d5cd
+    }
+
+    .search-box,
+    .reader-book,
+    .modal,
+    .auth-card {
+        background: #232623;
+        border-color: #2f332c
+    }
 }
 
 button,
@@ -2504,5 +2563,330 @@ body:not(.auth-ready) .auth-screen {
 
     .reader-action {
         white-space: nowrap
+    }
+}
+
+/* Highlights & start markers */
+.reader-word.highlighted {
+    background: #f6e29b;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px #f6e29b;
+    padding: 0 1px;
+}
+
+.highlight-popover {
+    position: fixed;
+    transform: translate(-50%, 0);
+    z-index: 30;
+    border: 0;
+    background: #315c4b;
+    color: #fff;
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    box-shadow: 0 6px 20px #101a1233;
+    cursor: pointer;
+}
+
+.highlight-popover::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -5px;
+    width: 10px;
+    height: 10px;
+    background: #315c4b;
+    transform: translateX(-50%) rotate(45deg);
+    z-index: -1;
+}
+
+@media print {
+
+    body.printing-reader .sidebar,
+    body.printing-reader .topbar,
+    body.printing-reader .reader-welcome,
+    body.printing-reader .section-heading,
+    body.printing-reader .reading-toolbar,
+    body.printing-reader .reader-progress,
+    body.printing-reader .reader-book-actions,
+    body.printing-reader .book-end,
+    body.printing-reader footer,
+    body.printing-reader .toast,
+    body.printing-reader .highlight-popover,
+    body.printing-reader .modal-backdrop,
+    body.printing-reader .auth-screen,
+    body.printing-reader .app-splash,
+    body.printing-reader .skip-link {
+        display: none !important;
+    }
+
+    body.printing-reader .app-shell,
+    body.printing-reader .main-content,
+    body.printing-reader .page-wrap,
+    body.printing-reader .library-section,
+    body.printing-reader .reader-book,
+    body.printing-reader .reader-document {
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        max-width: none !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        background: #fff !important;
+    }
+
+    body.printing-reader .reader-copy {
+        width: 100% !important;
+        padding: 18mm 16mm !important;
+        color: #000 !important;
+    }
+
+    body.printing-reader .reader-paragraph {
+        color: #000 !important;
+        orphans: 3;
+        widows: 3;
+    }
+
+    body.printing-reader .book-chapter {
+        break-before: page;
+        page-break-before: always;
+    }
+
+    body.printing-reader .book-chapter:first-of-type {
+        break-before: auto;
+        page-break-before: auto;
+    }
+
+    body.printing-reader .book-chapter h2 {
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+
+    body.printing-reader .reader-word.highlighted {
+        background: #f6e29b !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+
+.skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 1000;
+    background: #315c4b;
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 0 0 6px 0;
+    font-size: 13px;
+    text-decoration: none;
+}
+
+.skip-link:focus {
+    left: 0
+}
+
+.auth-close {
+    position: absolute;
+    right: 14px;
+    top: 14px;
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 50%;
+    background: #efeee9;
+    color: #6e7168;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+}
+
+.auth-close[hidden] {
+    display: none
+}
+
+.auth-close svg {
+    width: 16px;
+    height: 16px;
+    display: block
+}
+
+.auth-close:hover {
+    background: #e3e1db
+}
+
+.auth-card {
+    position: relative
+}
+
+.privacy-note {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 8px 0 0;
+    text-align: center
+}
+
+.privacy-note a {
+    color: var(--green);
+    text-decoration: underline
+}
+
+.app-splash {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: var(--paper);
+    z-index: 200;
+    transition: opacity .25s;
+}
+
+.app-splash.hidden {
+    opacity: 0;
+    pointer-events: none
+}
+
+.app-splash-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: app-splash-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes app-splash-pulse {
+
+    0%,
+    100% {
+        opacity: .25;
+        transform: scale(.8)
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.1)
+    }
+}
+
+/* iOS Safari auto-zoom guard */
+.search-box input {
+    font-size: 16px
+}
+
+/* Larger type where the audit measured <12px */
+.nav-label {
+    font-size: 11px;
+    color: var(--muted)
+}
+
+.eyebrow {
+    font-size: 11px;
+    color: var(--muted)
+}
+
+footer {
+    font-size: 11px;
+    color: var(--muted)
+}
+
+.book-details p {
+    font-size: 11px;
+    color: var(--muted)
+}
+
+/* Reduced motion: honour everywhere, not just scroll */
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    .app-splash-dot {
+        animation: none;
+        opacity: 1
+    }
+
+    .book-cover:hover {
+        transform: none
+    }
+}
+
+/* Print works unconditionally on Ctrl-P */
+@media print {
+
+    .sidebar,
+    .topbar,
+    .reading-toolbar,
+    .reader-progress,
+    .reader-book-actions,
+    .book-end,
+    footer,
+    .toast,
+    .highlight-popover,
+    .modal-backdrop,
+    .auth-screen,
+    .app-splash,
+    .skip-link {
+        display: none !important;
+    }
+
+    .app-shell,
+    .main-content,
+    .page-wrap,
+    .library-section,
+    .reader-book,
+    .reader-document {
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        max-width: none !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        background: #fff !important;
+    }
+
+    .reader-copy {
+        width: 100% !important;
+        padding: 18mm 16mm !important;
+        color: #000 !important
+    }
+
+    .reader-paragraph {
+        color: #000 !important;
+        orphans: 3;
+        widows: 3
+    }
+
+    .book-chapter {
+        break-before: page;
+        page-break-before: always
+    }
+
+    .book-chapter:first-of-type {
+        break-before: auto;
+        page-break-before: auto
+    }
+
+    .book-chapter h2 {
+        break-after: avoid;
+        page-break-after: avoid
+    }
+
+    .reader-word.highlighted {
+        background: #f6e29b !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact
     }
 }

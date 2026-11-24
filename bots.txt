@@ -1,0 +1,39 @@
+
+# Bots that may crawl this site (allowed)
+User-agent: Googlebot
+Allow: /home, /library, /highlights, /notes, /settings, /upload, /downloadPdfBtn, /searchInput, /helpButton, /modal-backdrop, /toast
+
+User-agent: Bingbot
+Allow: /home, /library, /highlights, /notes, /settings, /upload, /downloadPdfBtn, /searchInput, /helpButton, /modal-backdrop, /toast
+
+User-agent: Yahoobot
+Allow: /home, /library, /highlights, /notes, /settings, /upload, /downloadPdfBtn, /searchInput, /helpButton, /modal-backdrop, /toast
+
+User-agent: DuckDuckGoSearch
+Allow: /home, /library, /highlights, /notes, /settings, /upload, /downloadPdfBtn, /searchInput, /helpButton, /modal-backdrop, /toast
+
+# Private pages should NOT be crawled
+Disallow:
+  /auth-screen
+  /app-splash
+  /authForm
+  /logoutButton
+  /currentUsername
+  /profile-avatar
+  /workspace-copy
+  /upgradeCard
+  /pageCrumb
+  /mobileMenu
+  /sidebar
+  /bookArea
+  /readerDocument
+  /modalBody
+  /chatShell
+  /ai-avatar
+  /notification-button i
+
+# Rate limiting
+Crawl-delay: 1
+Rate-limit-ttl: 1h
+
+Sitemap: sitemap.xml

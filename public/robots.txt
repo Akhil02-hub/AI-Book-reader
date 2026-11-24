@@ -1,0 +1,49 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /internal/
+
+Sitemap: https://YOUR-DOMAIN.com/sitemap.xml
+
+# ChatGPT Search
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /internal/
+
+# Claude Search
+User-agent: Claude-SearchBot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /internal/
+
+# Perplexity Search
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /internal/
+
+# Google Search
+User-agent: Googlebot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /internal/
+
+# Gemini
+User-agent: Google-Extended
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /internal/
+
+# Bing and Microsoft Copilot discovery
+User-agent: Bingbot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /internal/

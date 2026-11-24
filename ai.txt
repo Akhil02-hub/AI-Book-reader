@@ -1,0 +1,14 @@
+=========================================================
+PROJECT: AI BOOK READING
+ROLE OF ARTIFICIAL INTELLIGENCE
+=========================================================
+
+This project was heavily accelerated and improved with the assistance of Artificial Intelligence.
+
+AI was used as a collaborative tool to:
+- Audit security vulnerabilities (XSS prevention, rate limiting, SQL injection).
+- Refactor backend architecture (database persistence, session management).
+- Debug complex frontend issues (infinite loops, state management, DOM rendering).
+- Optimize CSS layout and responsive design.
+
+AI served as an accelerator, but the core product and its implementation were driven by human intent and guided by Amarachintha Akhil.

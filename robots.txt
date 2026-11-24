@@ -1,0 +1,23 @@
+
+User-agent: *
+Disallow:
+  /auth-screen
+  /app-splash
+
+Allow:
+  /home
+  /library
+  /highlights
+  /notes
+  /settings
+  /upload
+  /downloadPdfBtn
+  /searchInput
+  /helpButton
+  /modal-backdrop
+  /toast
+
+Crawl-delay: 1
+Rate-limit-ttl: 1h
+
+Sitemap: https://d:\AI-Book-reader/sitemap.xml

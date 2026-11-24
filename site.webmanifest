@@ -1,0 +1,16 @@
+{
+  "name": "AI Reading Assistant",
+  "short_name": "AIReader",
+  "type": "Web Application",
+  "hostname": "https://freeaibookreader.vercel.app/",
+  "description": "A browser-based reading assistant for listening to supported PDF and EPUB documents and pasted text with adjustable reading speed.",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Amarachintha Akhil"
+  },
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": ["32px", "128px"] }
+  ]
+}

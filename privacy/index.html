@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy — AI Book Reading</title>
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+        body {
+            background: var(--paper);
+            color: var(--ink);
+            font-family: var(--sans);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .page-wrap {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 60px 24px;
+            flex: 1;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .nav-header {
+            margin-bottom: 40px;
+            display: flex;
+            align-items: center;
+        }
+
+        .nav-header a {
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            color: var(--ink);
+            font-weight: 700;
+            font-size: 21px;
+            letter-spacing: -1.1px;
+        }
+
+        .nav-header img {
+            width: 27px;
+            height: 27px;
+        }
+
+        h1 {
+            font: 500 34px/1.2 var(--serif);
+            margin-bottom: 16px;
+            letter-spacing: -0.5px;
+        }
+
+        h2 {
+            font: 500 22px/1.4 var(--serif);
+            margin-top: 32px;
+            margin-bottom: 12px;
+            color: var(--ink);
+        }
+
+        p {
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--muted);
+            margin-bottom: 16px;
+        }
+
+        ul {
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--muted);
+            padding-left: 20px;
+            margin-bottom: 16px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        .page-footer {
+            text-align: center;
+            padding: 24px;
+            font-size: 12px;
+            color: var(--muted);
+            border-top: 1px solid var(--line);
+            margin-top: auto;
+        }
+
+        .page-footer a {
+            color: var(--muted);
+            margin: 0 8px;
+            text-decoration: none;
+        }
+
+        .page-footer a:hover {
+            color: var(--green);
+        }
+
+        .eyebrow {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1.15px;
+            color: #6f756a;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .brand-dot {
+            color: #73917b;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page-wrap">
+        <header class="nav-header">
+            <a href="/"><img src="/logo.png" alt="Logo" /><span>AI Reading<span class="brand-dot">.</span></span></a>
+        </header>
+        <main>
+            <span class="eyebrow">Privacy</span>
+            <h1>Privacy Policy.</h1>
+            <p>Your privacy is important. This policy explains how your data is handled when you use AI Book Reading.
+            </p>
+
+            <h2>What we collect</h2>
+            <p>We collect only the information necessary to provide the service:</p>
+            <ul>
+                <li><strong>Account Data:</strong> Your username and a securely hashed password.</li>
+                <li><strong>Book Data:</strong> The text of the books you upload (EPUB, PDF, TXT, MD) and the extracted
+                    chapters.</li>
+                <li><strong>Reading Data:</strong> Your reading progress (segment position) and any highlights you
+                    create.</li>
+            </ul>
+
+            <h2>How we store data</h2>
+            <p>Your data is stored securely on our servers using a SQLite database. We do not use third-party analytics,
+                tracking scripts, advertising networks, or external cloud storage providers.</p>
+
+            <h2>Highlights and Progress</h2>
+            <p>Reading progress and highlights are saved to your account so you can resume where you left off across
+                devices. When you delete a book, its associated reading data is removed.</p>
+
+            <h2>Cookies</h2>
+            <p>We use a single essential session cookie to keep you logged in. This cookie is strictly necessary for the
+                application to function and is not used for tracking.</p>
+        </main>
+    </div>
+    <footer class="page-footer">
+        <a href="/about">About</a> · <a href="/contact">Contact</a> · <a href="/faq">FAQ</a> · <a
+            href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+        <p style="margin-top: 12px; font-size: 12px;">Made by Amarachintha Akhil.</p>
+    </footer>
+</body>
+
+</html>

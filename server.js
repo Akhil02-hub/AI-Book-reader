@@ -12,8 +12,9 @@ const { rateLimit } = require('express-rate-limit');
 const scrypt = promisify(crypto.scrypt);
 const app = express();
 const root = process.env.APP_ROOT || __dirname;
-const dataDirectory = '/tmp/data';
-fs.mkdirSync(dataDirectory, { recursive: true });
+const dataDirectory = process.env.DATA_DIR || path.join(root, 'data');
+fs.mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });
+try { fs.chmodSync(dataDirectory, 0o700); } catch { /* best-effort */ }
 
 const production = process.env.NODE_ENV === 'production';
 const sessionSecret = process.env.SESSION_SECRET;
@@ -136,12 +137,16 @@ app.use(session({
   },
 }));
 
+function normaliseOrigin(value) {
+  try { return new URL(value).origin; } catch { return ''; }
+}
+const configuredOrigin = normaliseOrigin(process.env.APP_ORIGIN || '');
 function sameOrigin(req, res, next) {
-  const origin = req.get('origin');
-  const host = req.get('host');
-  const expected = (process.env.APP_ORIGIN || (host ? `${req.protocol}://${host}` : '')).replace(/\/$/, '');
-  const reqOrigin = (origin || '').replace(/\/$/, '');
-  if (!reqOrigin || !expected || reqOrigin !== expected) return res.status(403).json({ error: 'Request origin could not be verified.' });
+  const expected = configuredOrigin || normaliseOrigin(`${req.protocol}://${req.get('host')}`);
+  const got = normaliseOrigin(req.get('origin') || '');
+  if (!expected || !got || got !== expected) {
+    return res.status(403).json({ error: 'Request origin could not be verified.' });
+  }
   next();
 }
 
@@ -195,6 +200,7 @@ function regenerateSession(req) {
 }
 
 app.get('/', (req, res) => res.sendFile(path.join(root, 'index.html')));
+app.get('/index.html', (req, res) => res.sendFile(path.join(root, 'index.html')));
 app.get('/app.js', (req, res) => res.type('application/javascript').sendFile(path.join(root, 'app.js')));
 app.get('/styles.css', (req, res) => res.type('text/css').sendFile(path.join(root, 'styles.css')));
 app.get('/vendor/jszip.min.js', (req, res) => res.sendFile(path.join(root, 'node_modules/jszip/dist/jszip.min.js')));
@@ -203,6 +209,12 @@ app.get('/vendor/pdf.worker.min.mjs', (req, res) => res.sendFile(path.join(root,
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.get('/logo.png', (req, res) => res.type('image/png').sendFile(path.join(root, 'logo.png')));
 
+app.use(express.static(path.join(root, 'public')));
+app.use('/about', express.static(path.join(root, 'about')));
+app.use('/contact', express.static(path.join(root, 'contact')));
+app.use('/faq', express.static(path.join(root, 'faq')));
+app.use('/privacy', express.static(path.join(root, 'privacy')));
+app.use('/terms', express.static(path.join(root, 'terms')));
 app.get('/api/auth/me', (req, res) => {
   res.set('Cache-Control', 'no-store');
   if (!req.session.userId) return res.json({ user: null });
@@ -274,7 +286,8 @@ app.get('/api/books', requireUser, (req, res, next) => {
       progress = JSON.parse(row.progress_json);
     } catch (parseError) {
       console.error(`Book for user ${req.user.id} has corrupt JSON:`, parseError);
-      return res.status(500).json({ error: 'This book could not be loaded. Please re-upload.' });
+      try { db.prepare('DELETE FROM books WHERE user_id = ?').run(req.user.id); } catch { /* ignore */ }
+      return res.json({ book: null });
     }
     res.json({ book: { title: row.title, author: row.author, format: row.format, chapters, progress } });
   } catch (error) { next(error); }
