@@ -106,6 +106,7 @@ app.use(helmet({
       objectSrc: ["'none'"],
       scriptSrc: ["'self'", "'sha256-xFSs9bx3/IpO6SxIS0SAnFspCUIYx/B/goxZjFDAQlY='"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
       workerSrc: ["'self'", 'blob:'],
     },
   },
