@@ -22,6 +22,10 @@
   ],
   "routes": [
     {
+      "src": "/fonts/(.*)",
+      "dest": "/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "/server.js"
     }
