@@ -11,7 +11,7 @@ const { rateLimit } = require('express-rate-limit');
 
 const scrypt = promisify(crypto.scrypt);
 const app = express();
-const root = __dirname;
+const root = process.env.APP_ROOT || __dirname;
 const dataDirectory = path.join(root, 'data');
 fs.mkdirSync(dataDirectory, { recursive: true });
 
@@ -19,6 +19,9 @@ const production = process.env.NODE_ENV === 'production';
 const sessionSecret = process.env.SESSION_SECRET;
 if (production && (!sessionSecret || Buffer.byteLength(sessionSecret) < 32)) {
   throw new Error('Set SESSION_SECRET to a random value of at least 32 bytes before starting in production.');
+}
+if (production && !process.env.APP_ORIGIN) {
+  throw new Error('Set APP_ORIGIN (e.g. https://your-domain.example) before starting in production.');
 }
 const activeSessionSecret = sessionSecret || crypto.randomBytes(48).toString('base64url');
 if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
@@ -108,8 +111,15 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
   referrerPolicy: { policy: 'no-referrer' },
   strictTransportSecurity: production ? undefined : false,
+  permissionsPolicy: {
+    features: {
+      camera: [],
+      microphone: [],
+      geolocation: [],
+    },
+  },
 }));
-app.use(express.json({ limit: '16mb', strict: true }));
+app.use(express.json({ limit: '24mb', strict: true }));
 app.use(session({
   name: production ? '__Host-margin.sid' : 'margin.sid',
   secret: activeSessionSecret,
@@ -253,11 +263,21 @@ app.post('/api/auth/logout', sameOrigin, (req, res, next) => {
   });
 });
 
-app.get('/api/books', requireUser, (req, res) => {
-  const row = db.prepare('SELECT title, author, format, chapters_json, progress_json FROM books WHERE user_id = ?').get(req.user.id);
-  res.set('Cache-Control', 'no-store');
-  if (!row) return res.json({ book: null });
-  res.json({ book: { title: row.title, author: row.author, format: row.format, chapters: JSON.parse(row.chapters_json), progress: JSON.parse(row.progress_json) } });
+app.get('/api/books', requireUser, (req, res, next) => {
+  try {
+    const row = db.prepare('SELECT title, author, format, chapters_json, progress_json FROM books WHERE user_id = ?').get(req.user.id);
+    res.set('Cache-Control', 'no-store');
+    if (!row) return res.json({ book: null });
+    let chapters, progress;
+    try {
+      chapters = JSON.parse(row.chapters_json);
+      progress = JSON.parse(row.progress_json);
+    } catch (parseError) {
+      console.error(`Book for user ${req.user.id} has corrupt JSON:`, parseError);
+      return res.status(500).json({ error: 'This book could not be loaded. Please re-upload.' });
+    }
+    res.json({ book: { title: row.title, author: row.author, format: row.format, chapters, progress } });
+  } catch (error) { next(error); }
 });
 
 app.put('/api/books', sameOrigin, requireUser, (req, res) => {
@@ -300,7 +320,7 @@ app.put('/api/progress', sameOrigin, requireUser, (req, res) => {
 });
 
 setInterval(() => {
-  try { db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now()); } catch { /* Cleanup can safely retry on the next interval. */ }
+  try { db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now()); } catch (error) { console.error('Session cleanup failed:', error); }
 }, 60 * 60 * 1000).unref();
 
 app.use((req, res) => res.status(404).json({ error: 'Not found.' }));
@@ -308,7 +328,7 @@ app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
   if (error instanceof SyntaxError && Object.hasOwn(error, 'body')) return res.status(400).json({ error: 'Request body is not valid JSON.' });
   if (error.type === 'entity.too.large') return res.status(413).json({ error: 'Request is too large.' });
-  console.error('Request failed:', error.message);
+  console.error('Request failed:', error);
   res.status(500).json({ error: 'The request could not be completed.' });
 });
 
@@ -316,7 +336,14 @@ if (require.main === module) {
   const port = Number(process.env.PORT || 3000);
   const host = process.env.HOST || '127.0.0.1';
   const server = app.listen(port, host, () => console.log(`Margin is listening on http://${host}:${port}`));
-  process.on('SIGINT', () => { db.close(); server.close(); process.exit(0); });
-  process.on('SIGTERM', () => { db.close(); server.close(); process.exit(0); });
+  const shutdown = () => {
+    server.close(() => {
+      try { db.close(); } catch { /* already closed */ }
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 10000).unref();
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 }
 module.exports = app;

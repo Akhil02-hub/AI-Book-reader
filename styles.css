@@ -4,7 +4,7 @@
     --paper: #f8f7f4;
     --white: #fff;
     --ink: #242522;
-    --muted: #85857e;
+    --muted: #6f6f68;
     --line: #e9e7e1;
     --green: #315c4b;
     --green-dark: #254a3b;
@@ -18,8 +18,10 @@
     box-sizing: border-box
 }
 
-html {
-    scroll-behavior: smooth
+@media(prefers-reduced-motion:no-preference) {
+    html {
+        scroll-behavior: smooth
+    }
 }
 
 body {
@@ -115,6 +117,29 @@ button {
     border-radius: 9px;
     font-family: var(--serif);
     font-weight: 700
+}
+
+.workspace-avatar svg {
+    width: 16px;
+    height: 16px;
+    display: block
+}
+
+.workspace-avatar .workspace-initial {
+    display: none;
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1;
+    text-transform: uppercase
+}
+
+body.signed-in .workspace-avatar svg {
+    display: none
+}
+
+body.signed-in .workspace-avatar .workspace-initial {
+    display: block
 }
 
 .workspace-avatar svg {
@@ -1356,6 +1381,16 @@ footer b {
     transform: translate(-50%, 0)
 }
 
+:focus-visible {
+    outline: 2px solid #315c4b;
+    outline-offset: 2px
+}
+
+.reader-document:focus-visible {
+    outline: 2px solid #78937a;
+    outline-offset: -2px
+}
+
 .mobile-break {
     display: none
 }
@@ -2160,7 +2195,7 @@ footer b {
     display: none
 }
 
-body.signed-in .app-shell {
+body.app-ready .app-shell {
     display: block
 }
 
@@ -2402,6 +2437,14 @@ body:not(.auth-ready) .auth-screen {
     outline: 2px solid #d6c578;
     outline-offset: 5px;
     border-radius: 2px
+}
+
+.empty-upload-arrow {
+    width: 1em;
+    height: 1em;
+    vertical-align: -2px;
+    margin-left: 6px;
+    display: inline-block
 }
 
 .speech-button.speech-download {

@@ -13,11 +13,11 @@
 </head>
 
 <body>
-  <section class="auth-screen open" id="authScreen" aria-labelledby="authTitle">
+  <div class="auth-screen open" id="authScreen" role="dialog" aria-modal="true" aria-labelledby="authTitle">
     <div class="auth-card">
       <a class="brand auth-brand" href="#"><span class="brand-mark"><img src="/logo.png"
             alt="" /></span><span>margin<span class="brand-dot">.</span></span></a>
-      class="brand-dot">.</span></span></a>
+
       <p class="eyebrow">A PRIVATE SPACE FOR YOUR BOOKS</p>
       <h1 id="authTitle">Welcome back.</h1>
       <p class="auth-subtitle" id="authSubtitle">Sign in to continue reading where you left off.</p>
@@ -34,17 +34,18 @@
           type="button">Create an account</button></p>
       <p class="auth-security">Your books and reading progress are private to your account.</p>
     </div>
-  </section>
+  </div>
   <div class="app-shell">
     <aside class="sidebar" id="sidebar">
       <a class="brand" href="#home" aria-label="Margin home"><span class="brand-mark"><img src="/logo.png"
             alt="" /></span><span>margin<span class="brand-dot">.</span></span></a>
-      <button class="workspace-switch"><span class="workspace-avatar"><svg viewBox="0 0 24 24" fill="none"
+      <button class="workspace-switch" type="button"><span class="workspace-avatar"><svg viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M4 4h12a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2V4z" />
             <path d="M4 18a2 2 0 0 1 2-2h12" />
             <path d="M9 8h5" />
-          </svg></span><span class="workspace-copy"><strong>User
+          </svg><span class="workspace-initial" aria-hidden="true"></span></span><span
+          class="workspace-copy"><strong>User
             library</strong><small>Personal workspace</small></span><span class="chevrons"><svg viewBox="0 0 24 24"
             fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
             aria-hidden="true">
@@ -82,7 +83,7 @@
         <div class="upgrade-card"><span class="sparkle"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M12 2c.3 3.9 1.9 6.5 5.8 8-3.9 1.5-5.5 4.1-5.8 8-.3-3.9-1.9-6.5-5.8-8 3.9-1.5 5.5-4.1 5.8-8z" />
             </svg></span><strong>A little more room to think.</strong>
-          <p>Unlock unlimited AI conversations and notes.</p><button id="upgradeButton">Explore Plus
+          <p>Unlock unlimited AI conversations and notes.</p><button id="upgradeButton" type="button">Explore Plus
             <span>→</span></button>
         </div>
         <a href="#settings" class="nav-link settings-link" data-view="settings"><svg class="nav-icon"
@@ -109,8 +110,8 @@
         <div class="breadcrumbs"><span>My space</span><span class="crumb-slash">/</span><strong
             id="pageCrumb">Home</strong></div>
         <div class="topbar-actions"><label class="search-box"><span>⌕</span><input id="searchInput" type="search"
-              placeholder="Find in your book..." /><kbd>⌘ K</kbd></label><button class="help-button" id="helpButton"
-            aria-label="Help"><span aria-hidden="true">?</span> Help</button></div>
+              aria-label="Find in your book" placeholder="Find in your book..." /><kbd>⌘ K</kbd></label><button
+            class="help-button" id="helpButton" aria-label="Help"><span aria-hidden="true">?</span> Help</button></div>
       </header>
 
       <div class="page-wrap" id="pageWrap">
@@ -140,12 +141,12 @@
   </div>
 
   <div class="modal-backdrop" id="modalBackdrop" aria-hidden="true">
-    <section class="modal" id="modal" role="dialog" aria-modal="true"><button class="modal-close" id="closeModal"
-        aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" aria-hidden="true">
+    <section class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><button
+        class="modal-close" id="closeModal" aria-label="Close"><svg viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
           <path d="M6 6l12 12M18 6 6 18" />
         </svg></button>
-      aria-label="Close">×</button>
+
       <div id="modalBody"></div>
     </section>
   </div>

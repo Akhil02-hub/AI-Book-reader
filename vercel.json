@@ -2,36 +2,27 @@
     "version": 2,
     "builds": [
         {
-            "src": "api/[...path].js",
-            "use": "@vercel/node"
+            "src": "api/index.js",
+            "use": "@vercel/node",
+            "config": {
+                "memory": 1024,
+                "maxDuration": 30,
+                "includeFiles": [
+                    "index.html",
+                    "app.js",
+                    "styles.css",
+                    "logo.png",
+                    "node_modules/jszip/dist/jszip.min.js",
+                    "node_modules/pdfjs-dist/build/pdf.mjs",
+                    "node_modules/pdfjs-dist/build/pdf.worker.min.mjs"
+                ]
+            }
         }
     ],
     "routes": [
         {
-            "src": "/api/(.*)",
-            "dest": "/api/[...path].js"
-        },
-        {
-            "src": "/vendor/(.*)",
-            "dest": "/api/[...path].js"
-        },
-        {
-            "src": "/app.js",
-            "dest": "/api/[...path].js"
-        },
-        {
-            "src": "/styles.css",
-            "dest": "/api/[...path].js"
-        },
-        {
-            "src": "/",
-            "dest": "/api/[...path].js"
+            "src": "/(.*)",
+            "dest": "/api/index.js"
         }
-    ],
-    "functions": {
-        "api/[...path].js": {
-            "memory": 1024,
-            "maxDuration": 30
-        }
-    }
+    ]
 }

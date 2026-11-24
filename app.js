@@ -13,6 +13,7 @@ let toastTimer;
 let narrationTimer;
 let searchTimer;
 let authMode = 'login';
+let pendingAuthAction = null;
 let progress = { segmentIndex: 0, wordOffset: 0, scrollPercent: 0 };
 
 const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -73,7 +74,10 @@ async function downloadFullAudio() {
       updateSpeechControls();
     };
     audioRecorder.onstop = saveAudioRecording;
-    audioTracks[0].addEventListener('ended', () => { if (audioRecorder && audioRecorder.state === 'recording') audioRecorder.stop(); });
+    audioTracks[0].addEventListener('ended', () => {
+      if (isNarrating || isPaused) stopNarration();
+      if (audioRecorder && audioRecorder.state === 'recording') audioRecorder.stop();
+    });
     audioRecorder.start(1000);
     cancelNarration();
     progress = { ...progress, segmentIndex: 0, wordOffset: 0 };
@@ -98,10 +102,11 @@ async function downloadFullAudio() {
     toast('Recording… narration saves automatically at the end.');
   } catch (error) {
     if (error.name !== 'NotAllowedError' && error.name !== 'AbortError') toast(`Audio capture failed: ${error.message}`);
+    cancelNarration();
     stopAudioTracks();
     audioRecorder = null;
     audioChunks = [];
-    audioProgressSnapshot = null;
+    restoreProgressSnapshot();
     updateSpeechControls();
   }
 }
@@ -145,18 +150,49 @@ async function api(url, options = {}) {
 function showAuth(message = '') {
   document.body.classList.remove('signed-in');
   document.body.classList.add('auth-ready');
+  document.body.classList.add('app-ready');
   authScreen.classList.add('open');
   document.querySelector('#authError').textContent = message;
   document.querySelector('#usernameInput').focus();
 }
 
 function showApplication(username) {
+  const initial = (username || '?').slice(0, 1).toUpperCase();
   document.body.classList.add('signed-in');
   document.body.classList.add('auth-ready');
+  document.body.classList.add('app-ready');
   authScreen.classList.remove('open');
   document.querySelector('#currentUsername').textContent = username;
   document.querySelector('.workspace-copy strong').textContent = `${username}'s library`;
-  document.querySelector('.profile-avatar').textContent = username.slice(0, 1).toUpperCase();
+  const workspaceInitial = document.querySelector('.workspace-avatar .workspace-initial');
+  if (workspaceInitial) workspaceInitial.textContent = initial;
+  document.querySelector('.profile-avatar').textContent = initial;
+  document.querySelector('.profile-row small').textContent = 'Signed in';
+  document.querySelector('#logoutButton').textContent = 'Sign out';
+}
+
+function showGuestMode() {
+  document.body.classList.remove('signed-in');
+  document.body.classList.add('app-ready');
+  authScreen.classList.remove('open');
+  document.querySelector('#currentUsername').textContent = 'Guest';
+  document.querySelector('.workspace-copy strong').textContent = 'Local library';
+  const workspaceInitial = document.querySelector('.workspace-avatar .workspace-initial');
+  if (workspaceInitial) workspaceInitial.textContent = '';
+  document.querySelector('.profile-avatar').textContent = 'G';
+  document.querySelector('.profile-row small').textContent = 'Not signed in';
+  document.querySelector('#logoutButton').textContent = 'Sign in';
+}
+
+function requireAuth(action) {
+  if (document.body.classList.contains('signed-in')) {
+    action?.();
+    return true;
+  }
+  pendingAuthAction = action || null;
+  setAuthMode('login');
+  showAuth();
+  return false;
 }
 
 function setAuthMode(mode) {
@@ -197,6 +233,7 @@ function toast(message) {
 
 function apiProgress(keepalive = false) {
   if (!currentBook) return Promise.resolve();
+  if (!document.body.classList.contains('signed-in')) return Promise.resolve();
   const payload = JSON.stringify(progress);
   if (keepalive) return fetch('/api/progress', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => { });
   return api('/api/progress', { method: 'PUT', body: payload }).catch(() => { });
@@ -237,7 +274,7 @@ function renderEmpty() {
   document.querySelector('#welcomeSubtitle').textContent = 'Upload a book and read it from beginning to end in one continuous view.';
   document.querySelector('#libraryEyebrow').textContent = 'YOUR READING SPACE';
   document.querySelector('#libraryTitle').textContent = 'Your book';
-  bookArea.innerHTML = `<button class="empty-upload" id="emptyUpload"><span class="empty-upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v14"/><path d="m6 9 6-6 6 6"/><path d="M4 21h16"/></svg></span><strong>Start with one book</strong><span>Choose an EPUB, PDF, TXT, or Markdown file.</span><span class="empty-upload-action">Choose a book <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:1em;height:1em;vertical-align:-2px;margin-left:6px;display:inline-block"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></span></button>`;
+  bookArea.innerHTML = `<button class="empty-upload" id="emptyUpload"><span class="empty-upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v14"/><path d="m6 9 6-6 6 6"/><path d="M4 21h16"/></svg></span><strong>Start with one book</strong><span>Choose an EPUB, PDF, TXT, or Markdown file.</span><span class="empty-upload-action">Choose a book <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="empty-upload-arrow"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></span></button>`;
   document.querySelector('#emptyUpload').addEventListener('click', openUpload);
 }
 
@@ -303,10 +340,34 @@ function renderBook(book) {
     updateReadProgress();
     highlightPosition();
   });
+  let scrollRecomputeTimer = null;
   reader.addEventListener('scroll', () => {
     updateReadProgress();
     const maxScroll = reader.scrollHeight - reader.clientHeight;
     progress.scrollPercent = maxScroll > 0 ? Math.max(0, Math.min(100, reader.scrollTop / maxScroll * 100)) : 0;
+    if (!isNarrating && !isPaused) {
+      clearTimeout(scrollRecomputeTimer);
+      scrollRecomputeTimer = setTimeout(() => {
+        const viewport = reader.getBoundingClientRect();
+        const midY = viewport.top + viewport.height / 2;
+        let closest = null;
+        let closestDist = Infinity;
+        for (const node of reader.querySelectorAll('.reader-sentence')) {
+          const rect = node.getBoundingClientRect();
+          if (rect.bottom < viewport.top || rect.top > viewport.bottom) continue;
+          const dist = Math.abs((rect.top + rect.bottom) / 2 - midY);
+          if (dist < closestDist) { closestDist = dist; closest = node; }
+        }
+        if (closest) {
+          const idx = Number(closest.dataset.segmentIndex);
+          if (Number.isFinite(idx) && idx !== progress.segmentIndex) {
+            progress.segmentIndex = idx;
+            progress.wordOffset = 0;
+            highlightPosition();
+          }
+        }
+      }, 200);
+    }
     scheduleProgressSave();
   }, { passive: true });
 }
@@ -327,7 +388,8 @@ function configureVoices() {
   if (!select || !('speechSynthesis' in window)) return;
   const refresh = () => {
     speechVoices = speechSynthesis.getVoices();
-    const oldValue = select.value;
+    if (!speechVoices.length) return;
+    const oldValue = select.value || localStorage.getItem('margin-voice') || '';
     select.innerHTML = '<option value="">System default</option>';
     speechVoices.forEach((voice) => {
       const option = document.createElement('option');
@@ -338,7 +400,8 @@ function configureVoices() {
     if ([...select.options].some(option => option.value === oldValue)) select.value = oldValue;
   };
   refresh();
-  speechSynthesis.onvoiceschanged = refresh;
+  speechSynthesis.addEventListener('voiceschanged', refresh);
+  select.onchange = () => localStorage.setItem('margin-voice', select.value);
 }
 
 function highlightPosition() {
@@ -482,6 +545,7 @@ function cancelNarration() {
 }
 
 function openUpload() {
+  if (!requireAuth(openUpload)) return;
   if (currentBook && !confirm('This replaces your current book. Continue?')) return;
   cancelNarration();
   showModal(`<span class="modal-kicker">YOUR PRIVATE LIBRARY</span><h2 id="modalTitle">Choose a book to read.</h2><p>Margin keeps one book in your account and lays the whole text out as one continuous reader.</p><label class="upload-zone" id="uploadZone" for="bookFile"><span class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v14"/><path d="m6 9 6-6 6 6"/><path d="M4 21h16"/></svg></span><strong>Drop a book here or choose a file</strong><span class="upload-support">EPUB, PDF, TXT, or Markdown · up to 14 MB</span><span class="upload-label">Choose file</span><input type="file" id="bookFile" accept=".epub,.pdf,.txt,.md,application/pdf,application/epub+zip,text/plain,text/markdown" /></label><p class="upload-note">Uploading a different book replaces your current book.</p><div id="uploadMessage" class="upload-message" aria-live="polite"></div>`, 'upload-dialog');
@@ -618,24 +682,42 @@ document.querySelector('#authForm').addEventListener('submit', async event => {
     form.reset();
     showApplication(result.user.username);
     await loadUserBook();
+    const pending = pendingAuthAction;
+    pendingAuthAction = null;
+    if (pending) pending();
   } catch (requestError) { error.textContent = requestError.message; }
   finally { button.disabled = false; }
 });
 
 document.querySelector('#logoutButton').addEventListener('click', async () => {
+  if (!document.body.classList.contains('signed-in')) {
+    requireAuth();
+    return;
+  }
+  pendingAuthAction = null;
   stopNarration();
   try { await api('/api/auth/logout', { method: 'POST' }); }
-  catch { /* Expired sessions can still return to the sign-in screen. */ }
+  catch { /* Expired sessions can still return to guest mode. */ }
   currentBook = null;
   closeModal();
   setAuthMode('login');
-  showAuth();
+  showGuestMode();
+  renderEmpty();
 });
 
 document.querySelector('#addBookButton').addEventListener('click', openUpload);
 document.querySelector('#upgradeButton').addEventListener('click', () => toast('Margin Plus is coming soon.'));
 document.querySelector('.workspace-switch').addEventListener('click', () => toast('Workspace switching is coming soon.'));
 document.querySelector('#closeModal').addEventListener('click', closeModal);
+modalBackdrop.addEventListener('keydown', event => {
+  if (event.key !== 'Tab' || !modalBackdrop.classList.contains('open')) return;
+  const focusable = [...modalBackdrop.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+});
 modalBackdrop.addEventListener('click', event => { if (event.target === modalBackdrop) closeModal(); });
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') { event.stopPropagation(); closeModal(); document.querySelector('#sidebar').classList.remove('mobile-open'); }
@@ -678,7 +760,7 @@ async function loadUserBook() {
     if (result.book) renderBook(result.book);
     else renderEmpty();
   } catch (error) {
-    if (/sign in/i.test(error.message)) { setAuthMode('login'); showAuth(); }
+    if (/sign in/i.test(error.message)) { showGuestMode(); renderEmpty(); }
     else { renderEmpty(); toast(error.message); }
   }
 }
@@ -690,12 +772,12 @@ async function initialize() {
       showApplication(result.user.username);
       await loadUserBook();
     } else {
-      setAuthMode('login');
-      showAuth();
+      showGuestMode();
+      renderEmpty();
     }
   } catch {
-    setAuthMode('login');
-    showAuth();
+    showGuestMode();
+    renderEmpty();
   }
 }
 

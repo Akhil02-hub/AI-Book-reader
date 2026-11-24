@@ -1,26 +1,23 @@
 {
-  "name": "margin-reader",
-  "version": "1.0.0",
-  "private": true,
-  "description": "A private, multi-user continuous book reader",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=22.13"
-  },
-  "dependencies": {
-    "better-sqlite3": "^12.2.0",
-    "dotenv": "^18.0.10",
-    "express": "^5.1.0",
-    "express-rate-limit": "^8.1.0",
-    "express-session": "^1.18.2",
-    "helmet": "^8.1.0",
-    "jszip": "3.10.2",
-    "pdfjs-dist": "6.5.438"
-  },
-  "allowScripts": {
-    "better-sqlite3@12.11.1": true
-  }
+    "name": "margin",
+    "version": "1.0.0",
+    "private": true,
+    "type": "commonjs",
+    "engines": {
+        "node": "22.x"
+    },
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node server.js"
+    },
+    "dependencies": {
+        "better-sqlite3": "^12.0.0",
+        "dotenv": "^16.4.7",
+        "express": "^4.21.2",
+        "express-rate-limit": "^7.4.1",
+        "express-session": "^1.18.1",
+        "helmet": "^8.0.0",
+        "jszip": "^3.10.1",
+        "pdfjs-dist": "^4.9.155"
+    }
 }
