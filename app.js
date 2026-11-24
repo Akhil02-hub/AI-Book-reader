@@ -31,7 +31,7 @@ let audioMimeType = 'audio/webm';
 
 function pickAudioMimeType() {
   if (!window.MediaRecorder) return '';
-  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/ogg;codecs=opus'];
+  const candidates = ['audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
   return candidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
 }
 
@@ -57,6 +57,10 @@ async function downloadFullAudio() {
   if (!currentBook || !readingSegments.length) return toast('Upload a book first.');
   if (!('speechSynthesis' in window)) return toast('Read aloud is not supported in this browser.');
   if (!window.isSecureContext) return toast('Audio capture requires HTTPS or localhost.');
+  if (/Android/i.test(navigator.userAgent)) {
+    isRecordingStarting = false;
+    return toast('Android blocks tab-audio recording. Please use a Desktop browser or iOS Safari to download the audio.');
+  }
   if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) return toast('Audio capture is not supported in this browser.');
   const mimeType = pickAudioMimeType();
   if (!mimeType) return toast('This browser does not support a recordable audio format.');
@@ -129,13 +133,14 @@ function saveAudioRecording() {
   restoreProgressSnapshot();
   updateSpeechControls();
   if (!chunks.length) return toast('No audio was captured.');
-  const blob = new Blob(chunks, { type: mime });
+  const blob = new Blob(chunks, { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   const safeTitle = (currentBook?.title || 'book').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'book';
   const ext = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
   anchor.download = `${safeTitle}_full_audio.${ext}`;
+  anchor.target = '_blank';
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
@@ -408,20 +413,11 @@ function setStartFromSentence(node) {
 }
 
 function setStartFromViewport() {
-  const reader = document.querySelector('#readerDocument');
-  if (!reader) return;
-  const viewport = reader.getBoundingClientRect();
-  const midY = viewport.top + viewport.height / 2;
-  let closest = null;
-  let closestDist = Infinity;
-  for (const node of reader.querySelectorAll('.reader-sentence')) {
-    const rect = node.getBoundingClientRect();
-    if (rect.bottom < viewport.top || rect.top > viewport.bottom) continue;
-    const dist = Math.abs((rect.top + rect.bottom) / 2 - midY);
-    if (dist < closestDist) { closestDist = dist; closest = node; }
-  }
-  if (!closest) { toast('Scroll to a sentence first.'); return; }
-  setStartFromSentence(closest);
+  const activePage = document.querySelector('.book-page.active');
+  if (!activePage) return;
+  const firstSentence = activePage.querySelector('.reader-sentence');
+  if (!firstSentence) return;
+  setStartFromSentence(firstSentence);
 }
 
 function downloadReaderPdf() {
@@ -476,31 +472,95 @@ function renderBook(book) {
   readingSegments = [];
   document.querySelector('#navBookCount').textContent = '1';
   document.querySelector('#welcomeTitle').textContent = 'Settle in. It’s all here.';
-  document.querySelector('#welcomeSubtitle').textContent = 'Your whole book, from the first line to the last, in one continuous reading view.';
+  document.querySelector('#welcomeSubtitle').textContent = 'Your whole book, presented page by page.';
   document.querySelector('#libraryEyebrow').textContent = 'NOW READING';
   document.querySelector('#libraryTitle').textContent = book.title;
 
-  const chapterMarkup = book.chapters.map((chapter, chapterIndex) => {
+  const pages = [];
+  let currentPageMarkup = '';
+  let currentPageSegmentCount = 0;
+  const SEGMENTS_PER_PAGE = 60; // Chunk size per page
+
+  book.chapters.forEach((chapter, chapterIndex) => {
     const paragraphs = chapter.text.split(/\n\s*\n/).map(value => value.trim()).filter(Boolean);
     const body = paragraphs.length ? paragraphs : [chapter.text.trim()].filter(Boolean);
-    const paragraphMarkup = body.map((paragraph, paragraphIndex) => {
+
+    body.forEach((paragraph, paragraphIndex) => {
       let sentenceMarkup = '';
       for (const rawSentence of sentenceTokens(paragraph)) {
         const leading = rawSentence.match(/^\s*/)?.[0] || '';
         const trailing = rawSentence.match(/\s*$/)?.[0] || '';
         const text = rawSentence.trim();
         if (!text) { sentenceMarkup += escapeHTML(rawSentence); continue; }
+
+        if (currentPageSegmentCount >= SEGMENTS_PER_PAGE) {
+          pages.push(currentPageMarkup);
+          currentPageMarkup = '';
+          currentPageSegmentCount = 0;
+        }
+
         const segmentIndex = readingSegments.length;
         const wordData = renderSentenceWords(text);
         readingSegments.push({ text, chapterIndex, paragraphIndex, wordRanges: wordData.wordRanges });
-        sentenceMarkup += `${escapeHTML(leading)}<span class="reader-sentence" data-segment-index="${segmentIndex}">${wordData.markup}</span>${escapeHTML(trailing)}`;
-      }
-      return `<p class="reader-paragraph">${sentenceMarkup}</p>`;
-    }).join('');
-    return `<section class="book-chapter">${chapter.title ? `<h2>${escapeHTML(chapter.title)}</h2>` : ''}${paragraphMarkup}</section>`;
-  }).join('');
 
-  bookArea.innerHTML = `<article class="reader-book"><header class="reader-book-header"><div class="reader-book-heading"><span class="modal-kicker">YOUR BOOK · ${escapeHTML((book.format || 'txt').toUpperCase())}</span><h2>${escapeHTML(book.title)}</h2><p>${escapeHTML(book.author || 'Uploaded book')}</p></div><div class="reader-book-actions"><button class="reader-action" id="downloadPdfBtn" title="Saves a PDF with your highlights baked in — choose 'Save as PDF' in the print dialog">Download PDF</button><button class="reader-action" id="removeBook">Remove book</button><button class="reader-action reader-action-primary" id="replaceBook">Replace book</button></div></header><div class="reading-toolbar"><div class="speech-controls"><button class="speech-button speech-start" id="speechStart"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg> <span>Start reading</span></button><button class="speech-button" id="speechPause" disabled><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg> <span>Pause</span></button><button class="speech-button speech-stop" id="speechStop" disabled><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg> <span>Stop</span></button><button class="speech-button speech-download" id="downloadAudioBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg> <span>Download full audio</span></button></div><div class="voice-settings"><label for="voiceSelect">Voice</label><select id="voiceSelect"><option value="">System default</option></select><label for="rateSelect">Speed</label><select id="rateSelect"><option value="0.8">0.8×</option><option value="1" selected>1×</option><option value="1.2">1.2×</option><option value="1.5">1.5×</option></select></div><span class="speech-status" id="speechStatus" aria-live="polite">Ready when you are</span></div><div class="reader-progress"><span>Reading progress</span><div class="reader-progress-track"><i id="progressBar"></i></div><span id="progressPercent">0%</span></div><div class="reader-document" id="readerDocument"><article class="reader-copy">${chapterMarkup}</article><div class="book-end">You’ve reached the end of <em>${escapeHTML(book.title)}</em>.</div></div></article>`;
+        sentenceMarkup += `${escapeHTML(leading)}<span class="reader-sentence" data-segment-index="${segmentIndex}">${wordData.markup}</span>${escapeHTML(trailing)}`;
+        currentPageSegmentCount++;
+      }
+      currentPageMarkup += `<p class="reader-paragraph">${sentenceMarkup}</p>`;
+    });
+  });
+  if (currentPageMarkup) pages.push(currentPageMarkup);
+  window.totalPages = pages.length;
+
+  window.currentPage = Math.floor(progress.segmentIndex / SEGMENTS_PER_PAGE);
+  if (window.currentPage >= window.totalPages) window.currentPage = Math.max(0, window.totalPages - 1);
+
+  let pagesHtml = '';
+  pages.forEach((html, index) => {
+    pagesHtml += `<div class="book-page ${index === window.currentPage ? 'active' : ''}" data-page-index="${index}">${html}</div>`;
+  });
+
+  bookArea.innerHTML = `<article class="reader-book">
+    <header class="reader-book-header">
+      <div class="reader-book-heading">
+        <span class="modal-kicker">YOUR BOOK · ${escapeHTML((book.format || 'txt').toUpperCase())}</span>
+        <h2>${escapeHTML(book.title)}</h2>
+        <p>${escapeHTML(book.author || 'Uploaded book')}</p>
+      </div>
+      <div class="reader-book-actions">
+        <button class="reader-action" id="setStartBtn">Set Start Here</button>
+        <button class="reader-action" id="downloadPdfBtn">Download PDF</button>
+        <button class="reader-action" id="removeBook">Remove</button>
+        <button class="reader-action reader-action-primary" id="replaceBook">Replace</button>
+      </div>
+    </header>
+    <div class="reading-toolbar">
+      <div class="speech-controls">
+        <button class="speech-button speech-start" id="speechStart"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> <span>Start reading</span></button>
+        <button class="speech-button" id="speechPause" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg> <span>Pause</span></button>
+        <button class="speech-button speech-stop" id="speechStop" disabled><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg> <span>Stop</span></button>
+        <button class="speech-button speech-download" id="downloadAudioBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg> <span>Audio</span></button>
+      </div>
+      <div class="voice-settings">
+        <label for="voiceSelect">Voice</label><select id="voiceSelect"><option value="">Default</option></select>
+        <label for="rateSelect">Speed</label><select id="rateSelect"><option value="0.8">0.8×</option><option value="1" selected>1×</option><option value="1.2">1.2×</option><option value="1.5">1.5×</option></select>
+      </div>
+      <span class="speech-status" id="speechStatus" aria-live="polite">Ready</span>
+    </div>
+    <div class="reader-progress">
+      <span>Progress</span>
+      <div class="reader-progress-track"><i id="progressBar"></i></div>
+      <span id="progressPercent">0%</span>
+    </div>
+    <div class="reader-document" id="readerDocument">
+      <div class="reader-pages-container">${pagesHtml}</div>
+    </div>
+    <div class="pagination-controls">
+      <button id="prevPageBtn" class="page-btn" ${window.currentPage === 0 ? 'disabled' : ''}>← Previous</button>
+      <span id="pageIndicator">Page ${window.currentPage + 1} of ${window.totalPages}</span>
+      <button id="nextPageBtn" class="page-btn" ${window.currentPage === window.totalPages - 1 ? 'disabled' : ''}>Next →</button>
+    </div>
+  </article>`;
 
   document.querySelector('#replaceBook').addEventListener('click', openUpload);
   document.querySelector('#removeBook').addEventListener('click', async () => {
@@ -512,72 +572,59 @@ function renderBook(book) {
       highlights = [];
       renderEmpty();
       toast('Book removed');
-    }
-    catch (error) { toast(error.message); }
+    } catch (error) { toast(error.message); }
   });
+
   document.querySelector('#speechStart').addEventListener('click', startNarration);
   document.querySelector('#speechPause').addEventListener('click', toggleNarrationPause);
   document.querySelector('#speechStop').addEventListener('click', stopNarration);
   document.querySelector('#downloadAudioBtn').addEventListener('click', downloadFullAudio);
   document.querySelector('#downloadPdfBtn').addEventListener('click', downloadReaderPdf);
   document.querySelector('#setStartBtn').addEventListener('click', setStartFromViewport);
-  configureVoices();
-  const reader = document.querySelector('#readerDocument');
-  const savedRatio = Math.max(0, Math.min(100, Number(progress.scrollPercent) || 0));
-  if (progress.segmentIndex >= readingSegments.length) progress.segmentIndex = Math.max(0, readingSegments.length - 1);
-  requestAnimationFrame(() => {
-    if (progress.segmentIndex > 0) {
-      const sentence = document.querySelector(`.reader-sentence[data-segment-index="${progress.segmentIndex}"]`);
-      if (sentence) {
-        sentence.scrollIntoView({ block: 'center' });
-        updateReadProgress();
-        highlightPosition();
-        return;
-      }
-    }
-    reader.scrollTop = (reader.scrollHeight - reader.clientHeight) * savedRatio / 100;
-    updateReadProgress();
-    highlightPosition();
+
+  document.querySelector('#readerDocument').addEventListener('click', (e) => {
+    const sentence = e.target.closest('.reader-sentence');
+    if (sentence) setStartFromSentence(sentence);
   });
-  let scrollRecomputeTimer = null;
-  reader.addEventListener('scroll', () => {
+  document.querySelector('#prevPageBtn').addEventListener('click', () => { cancelNarration(); goToPage(window.currentPage - 1); });
+  document.querySelector('#nextPageBtn').addEventListener('click', () => { cancelNarration(); goToPage(window.currentPage + 1); });
+
+  configureVoices();
+
+  requestAnimationFrame(() => {
+    highlightPosition();
     updateReadProgress();
-    const maxScroll = reader.scrollHeight - reader.clientHeight;
-    progress.scrollPercent = maxScroll > 0 ? Math.max(0, Math.min(100, reader.scrollTop / maxScroll * 100)) : 0;
-    if (!isNarrating && !isPaused) {
-      clearTimeout(scrollRecomputeTimer);
-      scrollRecomputeTimer = setTimeout(() => {
-        const viewport = reader.getBoundingClientRect();
-        const midY = viewport.top + viewport.height / 2;
-        let closest = null;
-        let closestDist = Infinity;
-        for (const node of reader.querySelectorAll('.reader-sentence')) {
-          const rect = node.getBoundingClientRect();
-          if (rect.bottom < viewport.top || rect.top > viewport.bottom) continue;
-          const dist = Math.abs((rect.top + rect.bottom) / 2 - midY);
-          if (dist < closestDist) { closestDist = dist; closest = node; }
-        }
-        if (closest) {
-          const idx = Number(closest.dataset.segmentIndex);
-          if (Number.isFinite(idx) && idx !== progress.segmentIndex) {
-            progress.segmentIndex = idx;
-            progress.wordOffset = 0;
-            highlightPosition();
-          }
-        }
-      }, 200);
-    }
+    applyHighlights();
+  });
+}
+
+function goToPage(pageIndex) {
+  if (pageIndex < 0 || pageIndex >= window.totalPages) return;
+  window.currentPage = pageIndex;
+  document.querySelectorAll('.book-page').forEach((p, i) => p.classList.toggle('active', i === pageIndex));
+
+  const indicator = document.querySelector('#pageIndicator');
+  if (indicator) indicator.textContent = `Page ${pageIndex + 1} of ${window.totalPages}`;
+
+  const prevBtn = document.querySelector('#prevPageBtn');
+  const nextBtn = document.querySelector('#nextPageBtn');
+  if (prevBtn) prevBtn.disabled = pageIndex === 0;
+  if (nextBtn) nextBtn.disabled = pageIndex === window.totalPages - 1;
+
+  if (!isNarrating) {
+    progress.segmentIndex = pageIndex * 60;
+    progress.wordOffset = 0;
+    highlightPosition();
+    updateReadProgress();
     scheduleProgressSave();
-  }, { passive: true });
+  }
 }
 
 function updateReadProgress() {
-  const reader = document.querySelector('#readerDocument');
   const bar = document.querySelector('#progressBar');
   const label = document.querySelector('#progressPercent');
-  if (!reader || !bar || !label) return;
-  const max = reader.scrollHeight - reader.clientHeight;
-  const percent = max > 0 ? Math.round(reader.scrollTop / max * 100) : 100;
+  if (!bar || !label) return;
+  const percent = readingSegments.length > 0 ? Math.round((progress.segmentIndex / readingSegments.length) * 100) : 0;
   bar.style.width = `${percent}%`;
   label.textContent = `${percent}%`;
 }
@@ -620,8 +667,15 @@ function configureVoices() {
 function highlightPosition() {
   document.querySelectorAll('.reader-sentence.reading-current').forEach(node => node.classList.remove('reading-current'));
   document.querySelectorAll('.reader-word.reading-current-word').forEach(node => node.classList.remove('reading-current-word'));
+
   const sentence = document.querySelector(`.reader-sentence[data-segment-index="${progress.segmentIndex}"]`);
   if (!sentence) return;
+
+  const pageNode = sentence.closest('.book-page');
+  if (pageNode && !pageNode.classList.contains('active')) {
+    goToPage(Number(pageNode.dataset.pageIndex));
+  }
+
   sentence.classList.add('reading-current');
   const word = sentence.querySelector(`.reader-word[data-word-index="${progress.wordOffset}"]`);
   if (word) word.classList.add('reading-current-word');
@@ -937,6 +991,17 @@ document.addEventListener('keydown', event => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); searchInput.focus(); }
 });
 document.querySelector('#mobileMenu').addEventListener('click', () => document.querySelector('#sidebar').classList.toggle('mobile-open'));
+
+document.addEventListener('mouseup', (e) => {
+  if (e.target.closest('#readerDocument')) {
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      showHighlightButton(rect.left + rect.width / 2, rect.top - 40);
+    }
+  }
+});
 
 document.querySelectorAll('[data-view]').forEach(link => link.addEventListener('click', event => { event.preventDefault(); openNavigation(link.dataset.view); }));
 window.addEventListener('hashchange', () => openNavigation(location.hash.slice(1) || 'home'));
