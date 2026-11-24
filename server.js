@@ -133,7 +133,7 @@ app.use(session({
     httpOnly: true,
     secure: production,
     sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: 365 * 24 * 60 * 60 * 1000,
     path: '/',
   },
 }));

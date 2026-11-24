@@ -138,7 +138,7 @@ button {
 
 .sidebar {
     position: fixed;
-    z-index: 5;
+    z-index: 50;
     inset: 0 auto 0 0;
     width: 248px;
     background: #f5f4f0;
@@ -147,7 +147,14 @@ button {
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    overflow-x: hidden
+    overflow-x: hidden;
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar.mobile-open {
+    transform: translateX(0);
 }
 
 .brand {
@@ -451,7 +458,7 @@ body.signed-in .workspace-avatar .workspace-initial {
 }
 
 .main-content {
-    margin-left: 248px;
+    margin-left: 0;
     min-height: 100vh
 }
 
@@ -570,7 +577,15 @@ body.signed-in .workspace-avatar .workspace-initial {
 }
 
 .mobile-menu {
-    display: none
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    padding: 4px;
+    margin-right: 12px;
+    cursor: pointer;
 }
 
 .page-wrap {
@@ -1610,32 +1625,13 @@ footer b {
 
 @media(max-width:700px) {
     .sidebar {
-        transform: translateX(-100%);
-        transition: transform .25s;
-        box-shadow: 8px 0 30px #2222;
         width: 245px
-    }
-
-    .sidebar.mobile-open {
-        transform: translateX(0)
-    }
-
-    .main-content {
-        margin-left: 0
     }
 
     .topbar {
         height: 58px;
         padding: 0 16px;
         gap: 12px
-    }
-
-    .mobile-menu {
-        display: block;
-        border: 0;
-        background: none;
-        color: #62665d;
-        padding: 4px
     }
 
     .mobile-menu svg {

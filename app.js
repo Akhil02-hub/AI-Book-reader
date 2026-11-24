@@ -16,7 +16,11 @@ let authMode = 'login';
 let pendingAuthAction = null;
 let progress = { segmentIndex: 0, wordOffset: 0, scrollPercent: 0 };
 let highlights = [];
-let highlightButton = null;
+let highlightContainer = null;
+let currentPage = 0;
+let totalPages = 0;
+let voicesBound = false;
+const SEGMENTS_PER_PAGE = 60;
 
 const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const sentenceSegmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'sentence' }) : null;
@@ -53,23 +57,29 @@ async function downloadFullAudio() {
   if (isRecordingStarting || (audioRecorder && audioRecorder.state !== 'inactive')) {
     return toast('A recording is already in progress.');
   }
-  isRecordingStarting = true;
+
   if (!currentBook || !readingSegments.length) return toast('Upload a book first.');
   if (!('speechSynthesis' in window)) return toast('Read aloud is not supported in this browser.');
   if (!window.isSecureContext) return toast('Audio capture requires HTTPS or localhost.');
-  if (/Android/i.test(navigator.userAgent)) {
-    isRecordingStarting = false;
-    return toast('Android blocks tab-audio recording. Please use a Desktop browser or iOS Safari to download the audio.');
-  }
+  if (/Android/i.test(navigator.userAgent)) return toast('Android blocks tab-audio recording. Please use Desktop or iOS.');
   if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) return toast('Audio capture is not supported in this browser.');
+
   const mimeType = pickAudioMimeType();
   if (!mimeType) return toast('This browser does not support a recordable audio format.');
   if (!confirm('To save the full book audio, pick THIS tab and tick "Share tab audio". Narration runs from the start; your reading position is restored afterwards. Continue?')) return;
+
+  isRecordingStarting = true;
   audioProgressSnapshot = { ...progress };
+
   try {
     audioStream = await navigator.mediaDevices.getDisplayMedia({ video: { width: 320, height: 180 }, audio: true });
     const audioTracks = audioStream.getAudioTracks();
-    if (!audioTracks.length) { stopAudioTracks(); audioProgressSnapshot = null; return toast('No audio shared. Enable "Share tab audio" and retry.'); }
+    if (!audioTracks.length) {
+      stopAudioTracks();
+      audioProgressSnapshot = null;
+      isRecordingStarting = false;
+      return toast('No audio shared. Enable "Share tab audio" and retry.');
+    }
     audioMimeType = mimeType;
     audioRecorder = new MediaRecorder(new MediaStream(audioTracks), { mimeType });
     audioChunks = [];
@@ -80,6 +90,7 @@ async function downloadFullAudio() {
       clearInterval(audioWatcher);
       audioRecorder = null;
       audioChunks = [];
+      isRecordingStarting = false;
       restoreProgressSnapshot();
       updateSpeechControls();
     };
@@ -90,13 +101,17 @@ async function downloadFullAudio() {
     });
     audioRecorder.start(1000);
     cancelNarration();
+
     progress = { ...progress, segmentIndex: 0, wordOffset: 0 };
+    if (typeof goToPage === 'function') goToPage(0, true);
+
     highlightPosition();
     startNarration();
     updateSpeechControls();
     setTimeout(() => {
       if (!isNarrating) {
         if (audioRecorder && audioRecorder.state === 'recording') audioRecorder.stop();
+        isRecordingStarting = false;
         return;
       }
       clearInterval(audioWatcher);
@@ -175,7 +190,7 @@ function showAuth(message = '') {
   authScreen.setAttribute('aria-hidden', 'false');
   document.querySelector('.app-shell').setAttribute('inert', '');
   const closeBtn = document.querySelector('#authClose');
-  if (closeBtn) closeBtn.hidden = !pendingAuthAction;
+  if (closeBtn) closeBtn.hidden = false;
   document.querySelector('#authError').textContent = message;
   document.querySelector('#usernameInput').focus();
 }
@@ -341,36 +356,85 @@ function captureSelectionHighlight() {
   if (!reader) return null;
   const range = selection.getRangeAt(0);
   if (!reader.contains(range.commonAncestorContainer)) return null;
+
   const groups = new Map();
-  for (const word of reader.querySelectorAll('.reader-word')) {
-    if (!range.intersectsNode(word)) continue;
-    const sentence = word.closest('.reader-sentence');
-    if (!sentence) continue;
+  const sentences = [...reader.querySelectorAll('.reader-sentence')].filter(s => range.intersectsNode(s));
+
+  for (const sentence of sentences) {
     const segmentIndex = Number(sentence.dataset.segmentIndex);
-    const wordIndex = Number(word.dataset.wordIndex);
-    if (!Number.isFinite(segmentIndex) || !Number.isFinite(wordIndex)) continue;
-    const bucket = groups.get(segmentIndex) || [];
-    bucket.push(wordIndex);
-    groups.set(segmentIndex, bucket);
+    if (!Number.isFinite(segmentIndex)) continue;
+
+    let minWord = Infinity;
+    let maxWord = -1;
+
+    for (const word of sentence.querySelectorAll('.reader-word')) {
+      if (range.intersectsNode(word)) {
+        const wordIndex = Number(word.dataset.wordIndex);
+        if (Number.isFinite(wordIndex)) {
+          minWord = Math.min(minWord, wordIndex);
+          maxWord = Math.max(maxWord, wordIndex);
+        }
+      }
+    }
+
+    if (maxWord >= 0) {
+      groups.set(segmentIndex, { start: minWord, end: maxWord });
+    }
   }
+
   if (!groups.size) return null;
   const result = [];
   for (const [segmentIndex, indices] of groups) {
-    indices.sort((a, b) => a - b);
-    result.push({ segmentIndex, wordStart: indices[0], wordEnd: indices[indices.length - 1] });
+    result.push({ segmentIndex, wordStart: indices.start, wordEnd: indices.end });
   }
   return result;
 }
 
 function ensureHighlightButton() {
-  if (highlightButton) return highlightButton;
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'highlight-popover';
-  btn.textContent = 'Highlight';
-  btn.hidden = true;
-  btn.addEventListener('mousedown', event => event.preventDefault());
-  btn.addEventListener('click', () => {
+  if (highlightContainer) return highlightContainer;
+  const container = document.createElement('div');
+  container.className = 'highlight-popover-container';
+  container.style.position = 'fixed';
+  container.style.zIndex = '30';
+  container.style.display = 'none';
+  container.style.gap = '4px';
+  container.style.background = 'var(--green)';
+  container.style.padding = '4px';
+  container.style.borderRadius = '6px';
+  container.style.boxShadow = '0 6px 20px rgba(16, 26, 18, 0.2)';
+  container.style.transform = 'translate(-50%, 0)';
+
+  const btnHighlight = document.createElement('button');
+  btnHighlight.type = 'button';
+  btnHighlight.textContent = 'Highlight';
+  btnHighlight.style.padding = '6px 10px';
+  btnHighlight.style.borderRadius = '4px';
+  btnHighlight.style.border = 'none';
+  btnHighlight.style.background = 'transparent';
+  btnHighlight.style.color = '#fff';
+  btnHighlight.style.cursor = 'pointer';
+  btnHighlight.style.fontSize = '11px';
+  btnHighlight.style.fontWeight = '600';
+
+  const btnStart = document.createElement('button');
+  btnStart.type = 'button';
+  btnStart.textContent = 'Start here';
+  btnStart.style.padding = '6px 10px';
+  btnStart.style.borderRadius = '4px';
+  btnStart.style.border = 'none';
+  btnStart.style.background = 'transparent';
+  btnStart.style.color = '#fff';
+  btnStart.style.cursor = 'pointer';
+  btnStart.style.fontSize = '11px';
+  btnStart.style.fontWeight = '600';
+
+  [btnHighlight, btnStart].forEach(btn => {
+    btn.addEventListener('mouseenter', () => btn.style.background = 'var(--green-dark)');
+    btn.addEventListener('mouseleave', () => btn.style.background = 'transparent');
+    btn.addEventListener('mousedown', event => event.preventDefault());
+  });
+
+  btnHighlight.addEventListener('click', () => {
     const groups = captureSelectionHighlight();
     hideHighlightButton();
     if (!groups) return;
@@ -378,22 +442,41 @@ function ensureHighlightButton() {
     applyHighlights();
     saveHighlights();
     window.getSelection()?.removeAllRanges();
-    toast('Highlight saved. Use Download PDF to keep it.');
+    toast('Highlight saved.');
   });
-  document.body.appendChild(btn);
-  highlightButton = btn;
-  return btn;
+
+  btnStart.addEventListener('click', () => {
+    const selection = window.getSelection();
+    if (!selection.isCollapsed && selection.rangeCount > 0) {
+      let node = selection.getRangeAt(0).startContainer;
+      if (node.nodeType === 3) node = node.parentNode;
+      const sentence = node.closest('.reader-sentence');
+      hideHighlightButton();
+      window.getSelection()?.removeAllRanges();
+      if (sentence) setStartFromSentence(sentence);
+    }
+  });
+
+  container.appendChild(btnHighlight);
+  container.appendChild(btnStart);
+  document.body.appendChild(container);
+  highlightContainer = container;
+  return container;
 }
 
 function showHighlightButton(x, y) {
-  const btn = ensureHighlightButton();
-  btn.style.left = `${x}px`;
-  btn.style.top = `${y}px`;
-  btn.hidden = false;
+  const container = ensureHighlightButton();
+  container.style.left = `${x}px`;
+  container.style.top = `${Math.max(8, y)}px`;
+  container.style.display = 'flex';
 }
 
 function hideHighlightButton() {
-  if (highlightButton) highlightButton.hidden = true;
+  if (highlightContainer) highlightContainer.style.display = 'none';
+}
+
+function hideHighlightButton() {
+  if (highlightContainer) highlightContainer.style.display = 'none';
 }
 
 function pickBehavior() {
@@ -404,12 +487,14 @@ function setStartFromSentence(node) {
   if (!node) return;
   const idx = Number(node.dataset.segmentIndex);
   if (!Number.isFinite(idx)) return;
+  const wasReading = isNarrating || isPaused;
   cancelNarration();
   progress = { ...progress, segmentIndex: idx, wordOffset: 0 };
   highlightPosition();
   scheduleProgressSave();
   node.scrollIntoView({ behavior: pickBehavior(), block: 'center' });
   toast('Reading will start from here.');
+  if (wasReading) startNarration();
 }
 
 function setStartFromViewport() {
@@ -468,6 +553,7 @@ function renderEmpty() {
 function renderBook(book) {
   cancelNarration();
   currentBook = book;
+  loadHighlights();
   progress = { segmentIndex: 0, wordOffset: 0, scrollPercent: 0, ...(book.progress || {}) };
   readingSegments = [];
   document.querySelector('#navBookCount').textContent = '1';
@@ -479,7 +565,6 @@ function renderBook(book) {
   const pages = [];
   let currentPageMarkup = '';
   let currentPageSegmentCount = 0;
-  const SEGMENTS_PER_PAGE = 60; // Chunk size per page
 
   book.chapters.forEach((chapter, chapterIndex) => {
     const paragraphs = chapter.text.split(/\n\s*\n/).map(value => value.trim()).filter(Boolean);
@@ -510,14 +595,15 @@ function renderBook(book) {
     });
   });
   if (currentPageMarkup) pages.push(currentPageMarkup);
-  window.totalPages = pages.length;
+  totalPages = pages.length;
 
-  window.currentPage = Math.floor(progress.segmentIndex / SEGMENTS_PER_PAGE);
-  if (window.currentPage >= window.totalPages) window.currentPage = Math.max(0, window.totalPages - 1);
+  progress.segmentIndex = Math.min(progress.segmentIndex, Math.max(0, readingSegments.length - 1));
+  currentPage = Math.floor(progress.segmentIndex / SEGMENTS_PER_PAGE);
+  if (currentPage >= totalPages) currentPage = Math.max(0, totalPages - 1);
 
   let pagesHtml = '';
   pages.forEach((html, index) => {
-    pagesHtml += `<div class="book-page ${index === window.currentPage ? 'active' : ''}" data-page-index="${index}">${html}</div>`;
+    pagesHtml += `<div class="book-page ${index === currentPage ? 'active' : ''}" data-page-index="${index}">${html}</div>`;
   });
 
   bookArea.innerHTML = `<article class="reader-book">
@@ -556,9 +642,9 @@ function renderBook(book) {
       <div class="reader-pages-container">${pagesHtml}</div>
     </div>
     <div class="pagination-controls">
-      <button id="prevPageBtn" class="page-btn" ${window.currentPage === 0 ? 'disabled' : ''}>← Previous</button>
-      <span id="pageIndicator">Page ${window.currentPage + 1} of ${window.totalPages}</span>
-      <button id="nextPageBtn" class="page-btn" ${window.currentPage === window.totalPages - 1 ? 'disabled' : ''}>Next →</button>
+      <button id="prevPageBtn" class="page-btn" ${currentPage === 0 ? 'disabled' : ''}>← Previous</button>
+      <span id="pageIndicator">Page ${currentPage + 1} of ${totalPages}</span>
+      <button id="nextPageBtn" class="page-btn" ${currentPage === totalPages - 1 ? 'disabled' : ''}>Next →</button>
     </div>
   </article>`;
 
@@ -583,11 +669,13 @@ function renderBook(book) {
   document.querySelector('#setStartBtn').addEventListener('click', setStartFromViewport);
 
   document.querySelector('#readerDocument').addEventListener('click', (e) => {
+    if (!window.getSelection().isCollapsed) return;
     const sentence = e.target.closest('.reader-sentence');
     if (sentence) setStartFromSentence(sentence);
   });
-  document.querySelector('#prevPageBtn').addEventListener('click', () => { cancelNarration(); goToPage(window.currentPage - 1); });
-  document.querySelector('#nextPageBtn').addEventListener('click', () => { cancelNarration(); goToPage(window.currentPage + 1); });
+
+  document.querySelector('#prevPageBtn').addEventListener('click', () => { goToPage(currentPage - 1); });
+  document.querySelector('#nextPageBtn').addEventListener('click', () => { goToPage(currentPage + 1); });
 
   configureVoices();
 
@@ -598,21 +686,21 @@ function renderBook(book) {
   });
 }
 
-function goToPage(pageIndex) {
-  if (pageIndex < 0 || pageIndex >= window.totalPages) return;
-  window.currentPage = pageIndex;
+function goToPage(pageIndex, preserveProgress = false) {
+  if (pageIndex < 0 || pageIndex >= totalPages) return;
+  currentPage = pageIndex;
   document.querySelectorAll('.book-page').forEach((p, i) => p.classList.toggle('active', i === pageIndex));
 
   const indicator = document.querySelector('#pageIndicator');
-  if (indicator) indicator.textContent = `Page ${pageIndex + 1} of ${window.totalPages}`;
+  if (indicator) indicator.textContent = `Page ${pageIndex + 1} of ${totalPages}`;
 
   const prevBtn = document.querySelector('#prevPageBtn');
   const nextBtn = document.querySelector('#nextPageBtn');
   if (prevBtn) prevBtn.disabled = pageIndex === 0;
-  if (nextBtn) nextBtn.disabled = pageIndex === window.totalPages - 1;
+  if (nextBtn) nextBtn.disabled = pageIndex === totalPages - 1;
 
-  if (!isNarrating) {
-    progress.segmentIndex = pageIndex * 60;
+  if (!isNarrating && !isPaused && !preserveProgress) {
+    progress.segmentIndex = pageIndex * SEGMENTS_PER_PAGE;
     progress.wordOffset = 0;
     highlightPosition();
     updateReadProgress();
@@ -630,15 +718,14 @@ function updateReadProgress() {
 }
 
 function configureVoices() {
-  let voicesBound = false;
+  const voiceSelect = document.querySelector('#voiceSelect');
+
   function populateVoiceOptions(select) {
+    if (!select) return;
     speechVoices = speechSynthesis.getVoices();
-    if (!speechVoices.length) {
-      // Chrome returns [] until voiceschanged fires; the listener at configureVoices() will retry.
-      return;
-    }
     const oldValue = select.value || localStorage.getItem('margin-voice') || '';
     select.innerHTML = '<option value="">System default</option>';
+    if (!speechVoices.length) return;
     speechVoices.forEach((voice) => {
       const option = document.createElement('option');
       option.value = voice.name;
@@ -647,7 +734,9 @@ function configureVoices() {
     });
     if ([...select.options].some(option => option.value === oldValue)) select.value = oldValue;
   };
-  populateVoiceOptions(document.querySelector('#voiceSelect'));
+
+  if (voiceSelect) populateVoiceOptions(voiceSelect);
+
   if (!voicesBound) {
     voicesBound = true;
     speechSynthesis.addEventListener('voiceschanged', () => {
@@ -655,13 +744,16 @@ function configureVoices() {
       if (current) populateVoiceOptions(current);
     });
   }
+
   const rateSelect = document.querySelector('#rateSelect');
   const savedRate = localStorage.getItem('margin-rate');
   if (rateSelect) {
-    if (savedRate) rateSelect.value = savedRate;
+    const allowed = ['0.8', '1', '1.2', '1.5'];
+    if (allowed.includes(savedRate)) rateSelect.value = savedRate;
     rateSelect.onchange = () => localStorage.setItem('margin-rate', rateSelect.value);
   }
-  select.onchange = () => localStorage.setItem('margin-voice', select.value);
+
+  if (voiceSelect) voiceSelect.onchange = () => localStorage.setItem('margin-voice', voiceSelect.value);
 }
 
 function highlightPosition() {
@@ -671,11 +763,6 @@ function highlightPosition() {
   const sentence = document.querySelector(`.reader-sentence[data-segment-index="${progress.segmentIndex}"]`);
   if (!sentence) return;
 
-  const pageNode = sentence.closest('.book-page');
-  if (pageNode && !pageNode.classList.contains('active')) {
-    goToPage(Number(pageNode.dataset.pageIndex));
-  }
-
   sentence.classList.add('reading-current');
   const word = sentence.querySelector(`.reader-word[data-word-index="${progress.wordOffset}"]`);
   if (word) word.classList.add('reading-current-word');
@@ -683,7 +770,7 @@ function highlightPosition() {
 
 function scrollToCurrentSentence() {
   const sentence = document.querySelector(`.reader-sentence[data-segment-index="${progress.segmentIndex}"]`);
-  if (sentence) sentence.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (sentence) sentence.scrollIntoView({ behavior: pickBehavior(), block: 'center' });
 }
 
 function updateSpeechControls() {
@@ -694,14 +781,18 @@ function updateSpeechControls() {
   const status = document.querySelector('#speechStatus');
   if (!start || !pause || !stop || !status) return;
   start.disabled = isNarrating && !isPaused;
-  start.querySelector('span').textContent = isPaused ? 'Resume reading' : progress.segmentIndex ? 'Continue reading' : 'Start reading';
+
+  if (isPaused) start.querySelector('span').textContent = 'Resume reading';
+  else if (progress.segmentIndex >= readingSegments.length) start.querySelector('span').textContent = 'Read again';
+  else if (progress.segmentIndex > 0) start.querySelector('span').textContent = 'Continue reading';
+  else start.querySelector('span').textContent = 'Start reading';
+
   pause.disabled = !isNarrating && !isPaused;
   pause.querySelector('span').textContent = isPaused ? 'Resume' : 'Pause';
   stop.disabled = !isNarrating && !isPaused;
   if (download) download.disabled = Boolean(audioRecorder && audioRecorder.state === 'recording');
   status.textContent = isPaused ? 'Paused' : isNarrating ? 'Reading aloud…' : 'Ready when you are';
 }
-
 function selectedVoice() {
   const value = document.querySelector('#voiceSelect')?.value;
   return value === '' || value === undefined ? null : speechVoices.find(v => v.name === value) || null;
@@ -762,7 +853,7 @@ function speakCurrentSegment() {
     if (wordIndex >= 0) {
       progress.wordOffset = wordIndex;
       highlightPosition();
-      if (wordIndex % 5 === 0) apiProgress();
+      if (wordIndex % 5 === 0) scheduleProgressSave();
     }
   };
   utterance.onend = () => {
@@ -770,7 +861,7 @@ function speakCurrentSegment() {
     progress.segmentIndex += 1;
     progress.wordOffset = 0;
     highlightPosition();
-    apiProgress();
+    scheduleProgressSave();
     clearTimeout(narrationTimer);
     narrationTimer = setTimeout(speakCurrentSegment, 45);
   };
@@ -861,8 +952,8 @@ async function readTextFile(file) {
 }
 
 async function readPdf(file) {
-  const pdfjs = await import('/vendor/pdf.mjs');
-  pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.mjs';
+  const pdfjs = await import('./vendor/pdf.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.min.mjs';
   const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
   const info = await pdf.getMetadata().catch(() => ({ info: {} }));
   const pages = [];
@@ -900,7 +991,9 @@ async function readEpub(file) {
   const pathPrefix = packagePath.includes('/') ? packagePath.slice(0, packagePath.lastIndexOf('/') + 1) : '';
   const resolveZipPath = href => {
     const parts = href.startsWith('/') ? [] : pathPrefix.split('/').filter(Boolean);
-    for (const part of decodeURIComponent(href.split(/[?#]/, 1)[0]).replace(/^\//, '').split('/')) {
+    let safeHref = href.split(/[?#]/, 1)[0];
+    try { safeHref = decodeURIComponent(safeHref); } catch { /* keep raw */ }
+    for (const part of safeHref.replace(/^\//, '').split('/')) {
       if (part === '..') parts.pop();
       else if (part && part !== '.') parts.push(part);
     }
@@ -931,7 +1024,7 @@ function openNavigation(view) {
   if (view === 'highlights' || view === 'notes') toast(currentBook ? 'Highlights and notes are coming soon.' : 'Upload a book to begin reading.');
   if (view === 'settings') toast('Settings are coming soon.');
   if (view === 'home' || view === 'library') document.querySelector('#librarySection').scrollIntoView({ behavior: 'smooth' });
-  if (window.innerWidth <= 700) document.querySelector('#sidebar').classList.remove('mobile-open');
+  document.querySelector('#sidebar').classList.remove('mobile-open');
 }
 
 document.querySelector('#authSwitch').addEventListener('click', () => setAuthMode(authMode === 'login' ? 'register' : 'login'));
@@ -997,8 +1090,9 @@ document.addEventListener('mouseup', (e) => {
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
       const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      showHighlightButton(rect.left + rect.width / 2, rect.top - 40);
+      const rects = range.getClientRects();
+      const rect = rects[0] || range.getBoundingClientRect();
+      showHighlightButton(rect.left + rect.width / 2, Math.max(8, rect.top - 40));
     }
   }
 });
@@ -1012,6 +1106,10 @@ searchInput.addEventListener('input', () => {
     document.querySelectorAll('.reader-paragraph').forEach(paragraph => paragraph.classList.toggle('search-match', Boolean(query && paragraph.textContent.toLowerCase().includes(query))));
     const match = document.querySelector('.reader-paragraph.search-match');
     if (match && match.dataset.scrolled !== query) {
+      const pageNode = match.closest('.book-page');
+      if (pageNode && !pageNode.classList.contains('active')) {
+        goToPage(Number(pageNode.dataset.pageIndex), true);
+      }
       match.scrollIntoView({ behavior: 'smooth', block: 'center' });
       document.querySelectorAll('.reader-paragraph.search-match').forEach(p => delete p.dataset.scrolled);
       match.dataset.scrolled = query;
@@ -1033,7 +1131,7 @@ document.addEventListener('visibilitychange', () => {
 document.querySelector('#authScreen').addEventListener('keydown', event => { if (event.key === 'Escape') event.stopPropagation(); });
 
 document.addEventListener('click', event => {
-  if (highlightButton && !highlightButton.hidden && !highlightButton.contains(event.target)) {
+  if (highlightContainer && highlightContainer.style.display === 'flex' && !highlightContainer.contains(event.target)) {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) hideHighlightButton();
   }
@@ -1045,7 +1143,7 @@ async function loadUserBook() {
     if (result.book) renderBook(result.book);
     else renderEmpty();
   } catch (error) {
-    if (/sign in/i.test(error.message)) { showGuestMode(); renderEmpty(); }
+    if (error.status === 401) { showGuestMode(); renderEmpty(); }
     else { renderEmpty(); toast(error.message); }
   }
 }
@@ -1060,13 +1158,19 @@ async function initialize() {
       showGuestMode();
       renderEmpty();
     }
-  } catch {
-    showGuestMode();
-    renderEmpty();
+  } catch (error) {
+    // Only show guest mode if it's a real 401, otherwise retry or keep the current view
+    if (error.status === 401) {
+      showGuestMode();
+      renderEmpty();
+    } else {
+      // If it's a network error, try to load the book from cache/local state rather than kicking the user out
+      renderEmpty();
+    }
   } finally {
-    // Hide the loading splash screen when initialization finishes
     const splash = document.getElementById('appSplash');
     if (splash) splash.classList.add('hidden');
   }
 }
+
 initialize();
