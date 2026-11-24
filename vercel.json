@@ -12,6 +12,8 @@
           "app.js",
           "styles.css",
           "logo.png",
+          "fonts/dm-sans.woff2",
+          "fonts/playfair-display.woff2",
           "node_modules/jszip/dist/jszip.min.js",
           "node_modules/pdfjs-dist/build/pdf.mjs",
           "node_modules/pdfjs-dist/build/pdf.worker.min.mjs"

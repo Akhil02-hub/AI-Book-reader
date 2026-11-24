@@ -104,7 +104,7 @@ app.use(helmet({
       frameAncestors: ["'none'"],
       imgSrc: ["'self'", 'data:', 'blob:'],
       objectSrc: ["'none'"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", "'sha256-xFSs9bx3/IpO6SxIS0SAnFspCUIYx/B/goxZjFDAQlY='"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       workerSrc: ["'self'", 'blob:'],
     },
@@ -209,6 +209,7 @@ app.get('/vendor/pdf.worker.min.mjs', (req, res) => res.sendFile(path.join(root,
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.get('/logo.png', (req, res) => res.type('image/png').sendFile(path.join(root, 'logo.png')));
 
+app.use('/fonts', express.static(path.join(root, 'fonts')));
 app.use(express.static(path.join(root, 'public')));
 app.use('/about', express.static(path.join(root, 'about')));
 app.use('/contact', express.static(path.join(root, 'contact')));
