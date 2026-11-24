@@ -1,0 +1,37 @@
+{
+    "version": 2,
+    "builds": [
+        {
+            "src": "api/[...path].js",
+            "use": "@vercel/node"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/api/(.*)",
+            "dest": "/api/[...path].js"
+        },
+        {
+            "src": "/vendor/(.*)",
+            "dest": "/api/[...path].js"
+        },
+        {
+            "src": "/app.js",
+            "dest": "/api/[...path].js"
+        },
+        {
+            "src": "/styles.css",
+            "dest": "/api/[...path].js"
+        },
+        {
+            "src": "/",
+            "dest": "/api/[...path].js"
+        }
+    ],
+    "functions": {
+        "api/[...path].js": {
+            "memory": 1024,
+            "maxDuration": 30
+        }
+    }
+}

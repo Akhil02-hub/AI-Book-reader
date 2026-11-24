@@ -1,3 +1,4 @@
+require('dotenv').config();
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -64,7 +65,7 @@ class SQLiteSessionStore extends session.Store {
     } catch (error) { callback(error); }
   }
 
-  set(sid, value, callback = () => {}) {
+  set(sid, value, callback = () => { }) {
     try {
       const expiresAt = value.cookie?.expires ? new Date(value.cookie.expires).getTime() : Date.now() + 7 * 24 * 60 * 60 * 1000;
       db.prepare('INSERT INTO sessions (sid, data, expires_at) VALUES (?, ?, ?) ON CONFLICT(sid) DO UPDATE SET data = excluded.data, expires_at = excluded.expires_at')
@@ -73,7 +74,7 @@ class SQLiteSessionStore extends session.Store {
     } catch (error) { callback(error); }
   }
 
-  touch(sid, value, callback = () => {}) {
+  touch(sid, value, callback = () => { }) {
     try {
       const expiresAt = value.cookie?.expires ? new Date(value.cookie.expires).getTime() : Date.now() + 7 * 24 * 60 * 60 * 1000;
       db.prepare('UPDATE sessions SET expires_at = ? WHERE sid = ?').run(expiresAt, sid);
@@ -81,7 +82,7 @@ class SQLiteSessionStore extends session.Store {
     } catch (error) { callback(error); }
   }
 
-  destroy(sid, callback = () => {}) {
+  destroy(sid, callback = () => { }) {
     try { db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid); callback(null); }
     catch (error) { callback(error); }
   }
@@ -94,18 +95,19 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       baseUri: ["'self'"],
       connectSrc: ["'self'"],
-      fontSrc: ["'self'", 'data:'],
+      fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
       formAction: ["'self'"],
       frameAncestors: ["'none'"],
       imgSrc: ["'self'", 'data:', 'blob:'],
       objectSrc: ["'none'"],
       scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       workerSrc: ["'self'", 'blob:'],
     },
   },
   crossOriginEmbedderPolicy: false,
   referrerPolicy: { policy: 'no-referrer' },
+  strictTransportSecurity: production ? undefined : false,
 }));
 app.use(express.json({ limit: '16mb', strict: true }));
 app.use(session({
@@ -127,8 +129,9 @@ app.use(session({
 function sameOrigin(req, res, next) {
   const origin = req.get('origin');
   const host = req.get('host');
-  const expected = process.env.APP_ORIGIN || (host ? `${req.protocol}://${host}` : '');
-  if (!origin || !expected || origin !== expected) return res.status(403).json({ error: 'Request origin could not be verified.' });
+  const expected = (process.env.APP_ORIGIN || (host ? `${req.protocol}://${host}` : '')).replace(/\/$/, '');
+  const reqOrigin = (origin || '').replace(/\/$/, '');
+  if (!reqOrigin || !expected || reqOrigin !== expected) return res.status(403).json({ error: 'Request origin could not be verified.' });
   next();
 }
 
@@ -137,7 +140,7 @@ function requireUser(req, res, next) {
   if (!userId) return res.status(401).json({ error: 'Please sign in to continue.' });
   const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
   if (!user) {
-    req.session.destroy(() => {});
+    req.session.destroy(() => { });
     return res.status(401).json({ error: 'Please sign in to continue.' });
   }
   req.user = user;
@@ -150,10 +153,18 @@ const authLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: { error: 'Too many sign-in attempts. Please wait a little and try again.' },
+  skipSuccessfulRequests: true,
+});
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many accounts created. Please wait and try again.' },
 });
 
 const DUMMY_SALT = Buffer.from('bWFyZ2luLWZha2Utc2FsdC1mb3ItdGltaW5nLXNhZmV0eQ', 'base64url');
-const DUMMY_HASH = Buffer.from('qGXn5qDizbCjPpWv6LfbJ7JX9P1MIINcCs3jpu5l79sv6ff4BcLhSuwQ9D2fhMbSk9PBf9mYJbB0R5KR1xdTuA', 'base64url');
+const DUMMY_HASH = Buffer.alloc(64);
 const SCRYPT_OPTIONS = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
 async function passwordHash(password, salt) {
@@ -161,7 +172,7 @@ async function passwordHash(password, salt) {
 }
 
 function validUsername(username) {
-  return typeof username === 'string' && /^[A-Za-z0-9_.-]{3,24}$/.test(username);
+  return typeof username === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{1,22}[A-Za-z0-9]$/.test(username);
 }
 
 function validPassword(password) {
@@ -176,20 +187,24 @@ function regenerateSession(req) {
 app.get('/', (req, res) => res.sendFile(path.join(root, 'index.html')));
 app.get('/app.js', (req, res) => res.type('application/javascript').sendFile(path.join(root, 'app.js')));
 app.get('/styles.css', (req, res) => res.type('text/css').sendFile(path.join(root, 'styles.css')));
-app.get('/vendor/jszip.min.js', (req, res) => res.type('application/javascript').sendFile(path.join(root, 'node_modules', 'jszip', 'dist', 'jszip.min.js')));
-app.get('/vendor/pdf.mjs', (req, res) => res.type('application/javascript').sendFile(path.join(root, 'node_modules', 'pdfjs-dist', 'build', 'pdf.min.mjs')));
-app.get('/vendor/pdf.worker.min.mjs', (req, res) => res.type('application/javascript').sendFile(path.join(root, 'node_modules', 'pdfjs-dist', 'build', 'pdf.worker.min.mjs')));
+app.get('/vendor/jszip.min.js', (req, res) => res.sendFile(path.join(root, 'node_modules/jszip/dist/jszip.min.js')));
+app.get('/vendor/pdf.mjs', (req, res) => res.sendFile(path.join(root, 'node_modules/pdfjs-dist/build/pdf.mjs')));
+app.get('/vendor/pdf.worker.min.mjs', (req, res) => res.sendFile(path.join(root, 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs')));
 app.get('/favicon.ico', (req, res) => res.status(204).end());
+app.get('/logo.png', (req, res) => res.type('image/png').sendFile(path.join(root, 'logo.png')));
 
 app.get('/api/auth/me', (req, res) => {
   res.set('Cache-Control', 'no-store');
   if (!req.session.userId) return res.json({ user: null });
   const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(req.session.userId);
-  if (!user) return res.json({ user: null });
+  if (!user) {
+    req.session.destroy(() => { });
+    return res.json({ user: null });
+  }
   res.json({ user: { username: user.username } });
 });
 
-app.post('/api/auth/register', sameOrigin, authLimiter, async (req, res, next) => {
+app.post('/api/auth/register', sameOrigin, registerLimiter, async (req, res, next) => {
   try {
     const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
     const password = req.body.password;
@@ -216,7 +231,7 @@ app.post('/api/auth/login', sameOrigin, authLimiter, async (req, res, next) => {
   try {
     const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
     const password = typeof req.body.password === 'string' ? req.body.password : '';
-    if (!validUsername(username) || !password || password.length > 128) return res.status(400).json({ error: 'Enter a valid username and password.' });
+    if (!validUsername(username) || !password || Array.from(password).length > 128) return res.status(400).json({ error: 'Enter a valid username and password.' });
     const user = db.prepare('SELECT id, username, password_salt, password_hash FROM users WHERE username = ? COLLATE NOCASE').get(username);
     const salt = user ? Buffer.from(user.password_salt, 'base64url') : DUMMY_SALT;
     const expected = user ? Buffer.from(user.password_hash, 'base64url') : DUMMY_HASH;
@@ -248,8 +263,8 @@ app.get('/api/books', requireUser, (req, res) => {
 app.put('/api/books', sameOrigin, requireUser, (req, res) => {
   const { title, author = '', format, chapters } = req.body || {};
   const allowedFormats = new Set(['epub', 'pdf', 'txt', 'md']);
-  if (typeof title !== 'string' || !title.trim() || title.length > 240) return res.status(400).json({ error: 'Book title is required.' });
-  if (typeof author !== 'string' || author.length > 240) return res.status(400).json({ error: 'Book author is too long.' });
+  if (typeof title !== 'string' || !title.trim() || title.trim().length > 240) return res.status(400).json({ error: 'Book title is required.' });
+  if (typeof author !== 'string' || author.trim().length > 240) return res.status(400).json({ error: 'Book author is too long.' });
   if (!allowedFormats.has(format) || !Array.isArray(chapters) || chapters.length < 1 || chapters.length > 1500) return res.status(400).json({ error: 'Book format or chapter data is invalid.' });
   let textBytes = 0;
   for (const chapter of chapters) {
@@ -274,8 +289,8 @@ app.delete('/api/books', sameOrigin, requireUser, (req, res) => {
 app.put('/api/progress', sameOrigin, requireUser, (req, res) => {
   const { segmentIndex, wordOffset, scrollPercent } = req.body || {};
   if (!Number.isSafeInteger(segmentIndex) || segmentIndex < 0 || segmentIndex > 1000000 ||
-      !Number.isSafeInteger(wordOffset) || wordOffset < 0 || wordOffset > 100000 ||
-      typeof scrollPercent !== 'number' || !Number.isFinite(scrollPercent) || scrollPercent < 0 || scrollPercent > 100) {
+    !Number.isSafeInteger(wordOffset) || wordOffset < 0 || wordOffset > 100000 ||
+    typeof scrollPercent !== 'number' || !Number.isFinite(scrollPercent) || scrollPercent < 0 || scrollPercent > 100) {
     return res.status(400).json({ error: 'Reading position is invalid.' });
   }
   const result = db.prepare('UPDATE books SET progress_json = ?, updated_at = ? WHERE user_id = ?')
@@ -297,6 +312,11 @@ app.use((error, req, res, next) => {
   res.status(500).json({ error: 'The request could not be completed.' });
 });
 
-const port = Number(process.env.PORT || 3000);
-const host = process.env.HOST || '127.0.0.1';
-app.listen(port, host, () => console.log(`Margin is listening on http://${host}:${port}`));
+if (require.main === module) {
+  const port = Number(process.env.PORT || 3000);
+  const host = process.env.HOST || '127.0.0.1';
+  const server = app.listen(port, host, () => console.log(`Margin is listening on http://${host}:${port}`));
+  process.on('SIGINT', () => { db.close(); server.close(); process.exit(0); });
+  process.on('SIGTERM', () => { db.close(); server.close(); process.exit(0); });
+}
+module.exports = app;
