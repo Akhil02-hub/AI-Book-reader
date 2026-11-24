@@ -18,17 +18,9 @@
           "node_modules/pdfjs-dist/build/pdf.worker.min.mjs"
         ]
       }
-    },
-    {
-      "src": "fonts/**",
-      "use": "@vercel/static"
     }
   ],
   "routes": [
-    {
-      "src": "/fonts/(.*)",
-      "dest": "/fonts/$1"
-    },
     {
       "src": "/(.*)",
       "dest": "/server.js"
