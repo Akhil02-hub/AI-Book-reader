@@ -106,7 +106,6 @@ app.use(helmet({
       objectSrc: ["'none'"],
       scriptSrc: ["'self'", "'sha256-xFSs9bx3/IpO6SxIS0SAnFspCUIYx/B/goxZjFDAQlY='"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-      fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
       workerSrc: ["'self'", 'blob:'],
     },
   },
@@ -118,6 +117,7 @@ app.use(helmet({
       camera: [],
       microphone: [],
       geolocation: [],
+      'display-capture': ["'self'"],
     },
   },
 }));
@@ -143,6 +143,8 @@ function normaliseOrigin(value) {
 }
 const configuredOrigin = normaliseOrigin(process.env.APP_ORIGIN || '');
 function sameOrigin(req, res, next) {
+  const site = req.get('sec-fetch-site');
+  if (site === 'same-origin' || site === 'same-site') return next();
   const expected = configuredOrigin || normaliseOrigin(`${req.protocol}://${req.get('host')}`);
   const got = normaliseOrigin(req.get('origin') || '');
   if (!expected || !got || got !== expected) {
@@ -176,6 +178,7 @@ const registerLimiter = rateLimit({
   limit: 5,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
   message: { error: 'Too many accounts created. Please wait and try again.' },
 });
 
@@ -210,15 +213,19 @@ app.get('/vendor/pdf.worker.min.mjs', (req, res) => res.sendFile(path.join(root,
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.get('/logo.png', (req, res) => res.type('image/png').sendFile(path.join(root, 'logo.png')));
 
-app.use('/fonts', express.static(path.join(process.cwd(), 'fonts')));
+app.use('/fonts', express.static(path.join(root, 'fonts')));
 app.use(express.static(path.join(root, 'public')));
 app.use('/about', express.static(path.join(root, 'about')));
 app.use('/contact', express.static(path.join(root, 'contact')));
 app.use('/faq', express.static(path.join(root, 'faq')));
 app.use('/privacy', express.static(path.join(root, 'privacy')));
 app.use('/terms', express.static(path.join(root, 'terms')));
-app.get('/api/auth/me', (req, res) => {
+app.use('/api', (req, res, next) => {
   res.set('Cache-Control', 'no-store');
+  next();
+});
+
+app.get('/api/auth/me', (req, res) => {
   if (!req.session.userId) return res.json({ user: null });
   const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(req.session.userId);
   if (!user) {
@@ -280,7 +287,6 @@ app.post('/api/auth/logout', sameOrigin, (req, res, next) => {
 app.get('/api/books', requireUser, (req, res, next) => {
   try {
     const row = db.prepare('SELECT title, author, format, chapters_json, progress_json FROM books WHERE user_id = ?').get(req.user.id);
-    res.set('Cache-Control', 'no-store');
     if (!row) return res.json({ book: null });
     let chapters, progress;
     try {
@@ -304,6 +310,7 @@ app.put('/api/books', sameOrigin, requireUser, (req, res) => {
   let textBytes = 0;
   for (const chapter of chapters) {
     if (!chapter || typeof chapter.title !== 'string' || chapter.title.length > 400 || typeof chapter.text !== 'string') return res.status(400).json({ error: 'Book text is invalid.' });
+    if (!chapter.text.trim()) return res.status(400).json({ error: 'Book chapters cannot be empty.' });
     textBytes += Buffer.byteLength(chapter.text, 'utf8');
     if (textBytes > 14 * 1024 * 1024) return res.status(413).json({ error: 'Extracted book text is larger than 14 MB.' });
   }
@@ -321,7 +328,15 @@ app.delete('/api/books', sameOrigin, requireUser, (req, res) => {
   res.status(204).end();
 });
 
-app.put('/api/progress', sameOrigin, requireUser, (req, res) => {
+const progressLimiter = rateLimit({
+  windowMs: 1000,
+  limit: 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many progress updates. Please slow down.' },
+});
+
+app.put('/api/progress', sameOrigin, progressLimiter, requireUser, (req, res) => {
   const { segmentIndex, wordOffset, scrollPercent } = req.body || {};
   if (!Number.isSafeInteger(segmentIndex) || segmentIndex < 0 || segmentIndex > 1000000 ||
     !Number.isSafeInteger(wordOffset) || wordOffset < 0 || wordOffset > 100000 ||
@@ -341,6 +356,7 @@ setInterval(() => {
 app.use((req, res) => res.status(404).json({ error: 'Not found.' }));
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
+  if (error.status && error.status < 500) return res.status(error.status).json({ error: error.message || 'Request failed.' });
   if (error instanceof SyntaxError && Object.hasOwn(error, 'body')) return res.status(400).json({ error: 'Request body is not valid JSON.' });
   if (error.type === 'entity.too.large') return res.status(413).json({ error: 'Request is too large.' });
   console.error('Request failed:', error);

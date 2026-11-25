@@ -22,6 +22,12 @@ let totalPages = 0;
 let voicesBound = false;
 const SEGMENTS_PER_PAGE = 60;
 
+const sidebarEl = document.querySelector('#sidebar');
+if (sidebarEl) {
+  sidebarEl.setAttribute('inert', '');
+  sidebarEl.setAttribute('aria-hidden', 'true');
+}
+
 const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const sentenceSegmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'sentence' }) : null;
 const wordSegmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'word' }) : null;
@@ -61,7 +67,7 @@ async function downloadFullAudio() {
   if (!currentBook || !readingSegments.length) return toast('Upload a book first.');
   if (!('speechSynthesis' in window)) return toast('Read aloud is not supported in this browser.');
   if (!window.isSecureContext) return toast('Audio capture requires HTTPS or localhost.');
-  if (/Android/i.test(navigator.userAgent)) return toast('Android blocks tab-audio recording. Please use Desktop or iOS.');
+
   if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) return toast('Audio capture is not supported in this browser.');
 
   const mimeType = pickAudioMimeType();
@@ -250,7 +256,10 @@ function setAuthMode(mode) {
   document.querySelector('#authError').textContent = '';
 }
 
+let previousFocus = null;
+
 function showModal(content, className = '') {
+  previousFocus = document.activeElement;
   modalBody.innerHTML = content;
   document.querySelector('#modal').className = `modal ${className}`.trim();
   modalBackdrop.classList.add('open');
@@ -267,10 +276,18 @@ function closeModal() {
   if (!authScreen.classList.contains('open')) {
     document.querySelector('.app-shell').removeAttribute('inert');
   }
+  if (previousFocus && typeof previousFocus.focus === 'function') {
+    previousFocus.focus();
+    previousFocus = null;
+  }
 }
 
 function toast(message) {
   const element = document.querySelector('#toast');
+  if (element && !element.hasAttribute('role')) {
+    element.setAttribute('role', 'status');
+    element.setAttribute('aria-live', 'polite');
+  }
   element.textContent = message;
   element.classList.add('show');
   clearTimeout(toastTimer);
@@ -475,10 +492,6 @@ function hideHighlightButton() {
   if (highlightContainer) highlightContainer.style.display = 'none';
 }
 
-function hideHighlightButton() {
-  if (highlightContainer) highlightContainer.style.display = 'none';
-}
-
 function pickBehavior() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 }
@@ -501,7 +514,10 @@ function setStartFromViewport() {
   const activePage = document.querySelector('.book-page.active');
   if (!activePage) return;
   const firstSentence = activePage.querySelector('.reader-sentence');
-  if (!firstSentence) return;
+  if (!firstSentence) {
+    toast('This page has no text to start from.');
+    return;
+  }
   setStartFromSentence(firstSentence);
 }
 
@@ -643,7 +659,7 @@ function renderBook(book) {
     </div>
     <div class="pagination-controls">
       <button id="prevPageBtn" class="page-btn" ${currentPage === 0 ? 'disabled' : ''}>← Previous</button>
-      <span id="pageIndicator">Page ${currentPage + 1} of ${totalPages}</span>
+      <span id="pageIndicator" aria-live="polite">Page ${currentPage + 1} of ${totalPages}</span>
       <button id="nextPageBtn" class="page-btn" ${currentPage === totalPages - 1 ? 'disabled' : ''}>Next →</button>
     </div>
   </article>`;
@@ -723,7 +739,9 @@ function configureVoices() {
   function populateVoiceOptions(select) {
     if (!select) return;
     speechVoices = speechSynthesis.getVoices();
-    const oldValue = select.value || localStorage.getItem('margin-voice') || '';
+    let savedVoice = '';
+    try { savedVoice = localStorage.getItem('margin-voice') || ''; } catch { /* storage disabled */ }
+    const oldValue = select.value || savedVoice || '';
     select.innerHTML = '<option value="">System default</option>';
     if (!speechVoices.length) return;
     speechVoices.forEach((voice) => {
@@ -746,14 +764,15 @@ function configureVoices() {
   }
 
   const rateSelect = document.querySelector('#rateSelect');
-  const savedRate = localStorage.getItem('margin-rate');
+  let savedRate = null;
+  try { savedRate = localStorage.getItem('margin-rate'); } catch { /* storage disabled */ }
   if (rateSelect) {
     const allowed = ['0.8', '1', '1.2', '1.5'];
     if (allowed.includes(savedRate)) rateSelect.value = savedRate;
-    rateSelect.onchange = () => localStorage.setItem('margin-rate', rateSelect.value);
+    rateSelect.onchange = () => { try { localStorage.setItem('margin-rate', rateSelect.value); } catch { /* storage disabled */ } };
   }
 
-  if (voiceSelect) voiceSelect.onchange = () => localStorage.setItem('margin-voice', voiceSelect.value);
+  if (voiceSelect) voiceSelect.onchange = () => { try { localStorage.setItem('margin-voice', voiceSelect.value); } catch { /* storage disabled */ } };
 }
 
 function highlightPosition() {
@@ -929,10 +948,10 @@ async function importBook(file) {
     else throw new Error('Choose an EPUB, PDF, TXT, or Markdown file.');
     if (!result.chapters.some(chapter => chapter.text.trim())) throw new Error('No readable text was found in this file.');
     const title = result.title || file.name.replace(/\.[^.]+$/, '');
-    await api('/api/books', { method: 'PUT', body: JSON.stringify({ title, author: result.author || '', format: extension, chapters: result.chapters }) });
+    const bookData = { title, author: result.author || '', format: extension, chapters: result.chapters };
+    await api('/api/books', { method: 'PUT', body: JSON.stringify(bookData) });
     closeModal();
-    const saved = await api('/api/books');
-    renderBook(saved.book);
+    renderBook({ ...bookData, progress: { segmentIndex: 0, wordOffset: 0, scrollPercent: 0 } });
     toast('Your book is ready to read');
   } catch (error) { setUploadError(error.message || 'Could not open this book. Please try another file.'); }
 }
@@ -1028,6 +1047,26 @@ function openNavigation(view) {
 }
 
 document.querySelector('#authSwitch').addEventListener('click', () => setAuthMode(authMode === 'login' ? 'register' : 'login'));
+const authCloseBtn = document.querySelector('#authClose');
+if (authCloseBtn) {
+  authCloseBtn.setAttribute('aria-label', 'Close sign-in');
+  authCloseBtn.addEventListener('click', () => {
+    showGuestMode();
+    renderEmpty();
+  });
+}
+const mobileMenuBtn = document.querySelector('#mobileMenu');
+if (mobileMenuBtn) {
+  mobileMenuBtn.setAttribute('aria-label', 'Toggle navigation menu');
+}
+const profileMenuBtn = document.querySelector('.profile-row button');
+if (profileMenuBtn) {
+  profileMenuBtn.setAttribute('aria-label', 'Profile options');
+}
+const searchInputEl = document.querySelector('#searchInput');
+if (searchInputEl) {
+  searchInputEl.setAttribute('aria-label', 'Search book text');
+}
 document.querySelector('#authForm').addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -1080,10 +1119,51 @@ modalBackdrop.addEventListener('keydown', event => {
 });
 modalBackdrop.addEventListener('click', event => { if (event.target === modalBackdrop) closeModal(); });
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape') { event.stopPropagation(); closeModal(); document.querySelector('#sidebar').classList.remove('mobile-open'); }
+  if (event.key === 'Escape') {
+    event.stopPropagation();
+    closeModal();
+    hideHighlightButton();
+    const sidebar = document.querySelector('#sidebar');
+    if (sidebar.classList.contains('mobile-open')) {
+      sidebar.classList.remove('mobile-open');
+      document.querySelector('#mobileMenu').setAttribute('aria-expanded', 'false');
+      sidebar.setAttribute('inert', '');
+      sidebar.setAttribute('aria-hidden', 'true');
+    }
+  }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); searchInput.focus(); }
 });
-document.querySelector('#mobileMenu').addEventListener('click', () => document.querySelector('#sidebar').classList.toggle('mobile-open'));
+document.querySelector('#mobileMenu').addEventListener('click', () => {
+  const sidebar = document.querySelector('#sidebar');
+  const isOpen = sidebar.classList.toggle('mobile-open');
+  document.querySelector('#mobileMenu').setAttribute('aria-expanded', String(isOpen));
+  if (isOpen) {
+    sidebar.removeAttribute('inert');
+    sidebar.removeAttribute('aria-hidden');
+  } else {
+    sidebar.setAttribute('inert', '');
+    sidebar.setAttribute('aria-hidden', 'true');
+  }
+});
+
+let selectionTimeout;
+document.addEventListener('selectionchange', () => {
+  clearTimeout(selectionTimeout);
+  selectionTimeout = setTimeout(() => {
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
+      const range = selection.getRangeAt(0);
+      const reader = document.querySelector('#readerDocument');
+      if (reader && reader.contains(range.commonAncestorContainer)) {
+        const rects = range.getClientRects();
+        const rect = rects[0] || range.getBoundingClientRect();
+        if (rect.width > 0 || rect.height > 0) {
+          showHighlightButton(rect.left + rect.width / 2, Math.max(8, rect.top - 40));
+        }
+      }
+    }
+  }, 200);
+});
 
 document.addEventListener('mouseup', (e) => {
   if (e.target.closest('#readerDocument')) {
@@ -1103,14 +1183,19 @@ searchInput.addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     const query = searchInput.value.trim().toLowerCase();
-    document.querySelectorAll('.reader-paragraph').forEach(paragraph => paragraph.classList.toggle('search-match', Boolean(query && paragraph.textContent.toLowerCase().includes(query))));
+    document.querySelectorAll('.reader-paragraph').forEach(paragraph => {
+      if (paragraph.dataset.searchText === undefined) {
+        paragraph.dataset.searchText = paragraph.textContent.toLowerCase();
+      }
+      paragraph.classList.toggle('search-match', Boolean(query && paragraph.dataset.searchText.includes(query)));
+    });
     const match = document.querySelector('.reader-paragraph.search-match');
     if (match && match.dataset.scrolled !== query) {
       const pageNode = match.closest('.book-page');
       if (pageNode && !pageNode.classList.contains('active')) {
         goToPage(Number(pageNode.dataset.pageIndex), true);
       }
-      match.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      match.scrollIntoView({ behavior: pickBehavior(), block: 'center' });
       document.querySelectorAll('.reader-paragraph.search-match').forEach(p => delete p.dataset.scrolled);
       match.dataset.scrolled = query;
     }
@@ -1149,6 +1234,12 @@ async function loadUserBook() {
 }
 
 async function initialize() {
+  window.__marginHandle401 = () => {
+    stopNarration();
+    showGuestMode();
+    renderEmpty();
+    showAuth('Your session expired. Please sign in again.');
+  };
   try {
     const result = await api('/api/auth/me');
     if (result.user) {
